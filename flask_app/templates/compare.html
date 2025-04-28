@@ -124,6 +124,103 @@
         .export-pdf-btn:hover {
             background-color: #e64a19;
         }
+        
+        /* 移动端响应式设计 */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .parameter-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            
+            .algorithm-results {
+                grid-template-columns: 1fr;
+            }
+            
+            .running-status {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .metrics-table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+                font-size: 14px;
+            }
+            
+            .metrics-table th, .metrics-table td {
+                padding: 8px 5px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .action-buttons button {
+                width: 100%;
+            }
+            
+            header h1 {
+                font-size: 22px;
+            }
+            
+            header .subtitle {
+                font-size: 14px;
+            }
+            
+            .main-nav ul {
+                flex-wrap: wrap;
+            }
+            
+            .main-nav li {
+                margin-bottom: 5px;
+            }
+        }
+        
+        /* 超小屏幕设备适配 */
+        @media (max-width: 480px) {
+            .container {
+                padding: 5px;
+            }
+            
+            h2 {
+                font-size: 18px;
+            }
+            
+            .parameter-group label {
+                font-size: 14px;
+            }
+            
+            .selection-options {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .status-indicator span {
+                font-size: 13px;
+            }
+            
+            .algorithm-card {
+                padding: 10px;
+            }
+            
+            .algorithm-card h3 {
+                font-size: 16px;
+            }
+            
+            .metric-item {
+                font-size: 13px;
+            }
+            
+            .combinations-list {
+                font-size: 13px;
+            }
+        }
     </style>
 </head>
 <body>

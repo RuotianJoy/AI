@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calculation History</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <style>
@@ -16,6 +17,8 @@
             border-radius: 8px;
             padding: 20px;
             position: relative;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         .panel-title {
             text-align: center;
@@ -26,12 +29,15 @@
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
+            font-weight: bold;
+            color: #333;
         }
         .record-list {
             max-height: 400px;
             overflow-y: auto;
             border: 1px solid #ddd;
             border-radius: 4px;
+            background-color: #f9f9f9;
         }
         .record-item {
             padding: 12px;
@@ -65,6 +71,7 @@
             padding: 10px;
             margin-bottom: 10px;
             overflow-y: auto;
+            background-color: #f9f9f9;
         }
         .action-buttons {
             display: flex;
@@ -77,6 +84,7 @@
             padding: 10px;
             text-align: center;
             margin-bottom: 10px;
+            border-radius: 4px;
         }
         .btn-secondary {
             background-color: #6c757d;
@@ -151,11 +159,127 @@
             align-items: center;
             gap: 5px;
         }
+        
+        /* 移动端响应式设计 */
+        @media (max-width: 768px) {
+            .history-container {
+                flex-direction: column;
+            }
+            
+            .record-panel, .details-panel {
+                width: 100%;
+            }
+            
+            .record-list {
+                max-height: 300px;
+            }
+            
+            .details-content {
+                min-height: 200px;
+            }
+            
+            .batch-controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .action-buttons button {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            
+            .panel-title {
+                font-size: 14px;
+            }
+            
+            .record-item {
+                padding: 8px;
+                font-size: 14px;
+            }
+            
+            .param-table td {
+                padding: 3px;
+                font-size: 14px;
+            }
+            
+            .empty-message, .error-message {
+                font-size: 14px;
+            }
+        }
+        
+        /* 超小屏幕设备 */
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+            }
+            
+            h1 {
+                font-size: 20px;
+                margin-bottom: 15px;
+            }
+            
+            .record-panel, .details-panel {
+                padding: 15px;
+                margin-top: 25px;
+            }
+            
+            .panel-title {
+                margin-top: -25px;
+                font-size: 13px;
+            }
+            
+            .record-list {
+                max-height: 250px;
+            }
+            
+            .record-item {
+                padding: 6px;
+                font-size: 13px;
+            }
+            
+            .details-content {
+                font-size: 13px;
+            }
+            
+            .result-id {
+                font-size: 16px;
+            }
+            
+            .section-title {
+                font-size: 14px;
+            }
+            
+            .select-message {
+                font-size: 13px;
+                padding: 8px;
+            }
+            
+            .batch-delete-btn {
+                padding: 4px 8px;
+                font-size: 13px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Calculation History</h1>
+        <header>
+            <h1>Optimal Samples Selection System</h1>
+            <p class="subtitle">Calculation History Records</p>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/">Single Algorithm</a></li>
+                    <li><a href="/compare">Algorithm Comparison</a></li>
+                    <li><a href="/history" class="active">History</a></li>
+                </ul>
+            </nav>
+        </header>
+
         <div class="history-container">
             <div class="record-panel">
                 <div class="panel-title">Saved Run Records</div>
@@ -180,7 +304,10 @@
                 </div>
             </div>
         </div>
-        <button class="btn" onclick="window.location.href='/'">Back to Home</button>
+        
+        <div class="action-buttons" style="margin-top: 20px;">
+            <button class="btn" onclick="window.location.href='/'">Back to Home</button>
+        </div>
     </div>
 
     <script>
