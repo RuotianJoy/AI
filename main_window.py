@@ -3,7 +3,8 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QListWidget, QMessageBox, QTabWidget, QSpinBox, QFormLayout,
                              QTextEdit, QFileDialog, QGridLayout, QApplication, QSplitter,
                              QFrame, QScrollArea, QComboBox, QListWidgetItem, QStyleFactory, QSizePolicy,
-                             QTextBrowser, QProgressBar)
+                             QTextBrowser, QProgressBar, QTableWidget, QTableWidgetItem, QHeaderView,
+                             QDialog, QPlainTextEdit, QDialogButtonBox)
 from PyQt5.QtCore import Qt, QSettings, QThread, pyqtSignal, QSize, QMargins, QPropertyAnimation, QEasingCurve
 from PyQt5.QtGui import QFont, QIntValidator, QColor, QPalette, QLinearGradient, QIcon, QPixmap, QFontDatabase
 import os
@@ -13,6 +14,17 @@ import time
 from genetic_algorithm import GeneticOptimizer
 from simulated_annealing import SimulatedAnnealingOptimizer
 from greedy_optimizer import GreedyOptimizer
+from solution_validator import SolutionValidator
+# 添加用于生成PDF的库
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
 
 class ComputationThread(QThread):
     # Define signals for thread communication
@@ -310,11 +322,18 @@ class MainWindow(QMainWindow):
         results_tab = QWidget()
         tab_widget.addTab(results_tab, "Result Management")
         
+        # Third tab - Algorithm Comparison
+        comparison_tab = QWidget()
+        tab_widget.addTab(comparison_tab, "Algorithm Comparison")
+        
         # Set parameter input page
         self.setup_input_tab(input_tab)
         
         # Set result management page
         self.setup_results_tab(results_tab)
+        
+        # Set algorithm comparison page
+        self.setup_comparison_tab(comparison_tab)
         
         # Add status bar
         status_bar = self.statusBar()
@@ -367,7 +386,7 @@ class MainWindow(QMainWindow):
         
         # Create input fields - First row
         # m parameter
-        m_label = QLabel("Total Sample Number (m):")
+        m_label = QLabel("m (45<=m<=54):")
         m_label.setStyleSheet(label_style)
         m_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.m_input = QSpinBox()
@@ -377,7 +396,7 @@ class MainWindow(QMainWindow):
         param_layout.addWidget(self.m_input, 0, 1)
         
         # n parameter
-        n_label = QLabel("Selected Sample Number (n):")
+        n_label = QLabel("n (7<=n<=25):")
         n_label.setStyleSheet(label_style)
         n_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.n_input = QSpinBox()
@@ -387,7 +406,7 @@ class MainWindow(QMainWindow):
         param_layout.addWidget(self.n_input, 0, 3)
         
         # k parameter
-        k_label = QLabel("Combination Size (k):")
+        k_label = QLabel("k (4<=k<=7):")
         k_label.setStyleSheet(label_style)
         k_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.k_input = QSpinBox()
@@ -398,7 +417,7 @@ class MainWindow(QMainWindow):
         
         # Second row
         # j parameter
-        j_label = QLabel("Subset Parameter (j):")
+        j_label = QLabel("j (s<=j<=k):")
         j_label.setStyleSheet(label_style)
         j_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.j_input = QSpinBox()
@@ -408,7 +427,7 @@ class MainWindow(QMainWindow):
         param_layout.addWidget(self.j_input, 1, 1)
         
         # s parameter
-        s_label = QLabel("Coverage Parameter (s):")
+        s_label = QLabel("s (3<=s<=7):")
         s_label.setStyleSheet(label_style)
         s_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.s_input = QSpinBox()
@@ -418,7 +437,7 @@ class MainWindow(QMainWindow):
         param_layout.addWidget(self.s_input, 1, 3)
         
         # f parameter
-        f_label = QLabel("Coverage Times (f):")
+        f_label = QLabel("at least f s samples:")
         f_label.setStyleSheet(label_style)
         f_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.f_input = QSpinBox()
@@ -1497,4 +1516,1231 @@ class MainWindow(QMainWindow):
             # 清除之前的结果
             self.current_results = []
             self.save_btn.setEnabled(False)
+    
+    def setup_comparison_tab(self, tab):
+        """Set up the algorithm comparison tab"""
+        # Create main layout
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(20)
         
+        # Parameter setting group
+        param_group = QGroupBox("Algorithm Parameter Setting")
+        param_layout = QGridLayout()
+        param_layout.setSpacing(15)
+        param_layout.setContentsMargins(20, 30, 20, 20)
+        
+        # Create label style
+        label_style = """
+            QLabel {
+                font-size: 11pt;
+                color: #333333;
+                font-weight: normal;
+            }
+        """
+        
+        # Create input fields - First row
+        # m parameter
+        m_label = QLabel("m (45<=m<=54):")
+        m_label.setStyleSheet(label_style)
+        m_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.comp_m_input = QSpinBox()
+        self.comp_m_input.setRange(45, 54)
+        self.comp_m_input.setValue(45)
+        self.comp_m_input.setMinimumWidth(80)  # 增加宽度
+        param_layout.addWidget(m_label, 0, 0)
+        param_layout.addWidget(self.comp_m_input, 0, 1)
+        
+        # n parameter
+        n_label = QLabel("n (7<=n<=25):")
+        n_label.setStyleSheet(label_style)
+        n_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.comp_n_input = QSpinBox()
+        self.comp_n_input.setRange(7, 25)
+        self.comp_n_input.setValue(7)
+        self.comp_n_input.setMinimumWidth(80)  # 增加宽度
+        param_layout.addWidget(n_label, 0, 2)
+        param_layout.addWidget(self.comp_n_input, 0, 3)
+        
+        # k parameter
+        k_label = QLabel("k (4<=k<=7):")
+        k_label.setStyleSheet(label_style)
+        k_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.comp_k_input = QSpinBox()
+        self.comp_k_input.setRange(4, 7)
+        self.comp_k_input.setValue(6)  # Default value is 6
+        self.comp_k_input.setMinimumWidth(80)  # 增加宽度
+        param_layout.addWidget(k_label, 0, 4)
+        param_layout.addWidget(self.comp_k_input, 0, 5)
+        
+        # Second row
+        # j parameter
+        j_label = QLabel("j (s<=j<=k):")
+        j_label.setStyleSheet(label_style)
+        j_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.comp_j_input = QSpinBox()
+        self.comp_j_input.setRange(3, 25)
+        self.comp_j_input.setValue(4)
+        self.comp_j_input.setMinimumWidth(80)  # 增加宽度
+        param_layout.addWidget(j_label, 1, 0)
+        param_layout.addWidget(self.comp_j_input, 1, 1)
+        
+        # s parameter
+        s_label = QLabel("s (3<=s<=7):")
+        s_label.setStyleSheet(label_style)
+        s_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.comp_s_input = QSpinBox()
+        self.comp_s_input.setRange(3, 7)
+        self.comp_s_input.setValue(4)
+        self.comp_s_input.setMinimumWidth(80)  # 增加宽度
+        param_layout.addWidget(s_label, 1, 2)
+        param_layout.addWidget(self.comp_s_input, 1, 3)
+        
+        # f parameter
+        f_label = QLabel("at least f s samples:")
+        f_label.setStyleSheet(label_style)
+        f_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.comp_f_input = QSpinBox()
+        self.comp_f_input.setRange(1, 10)
+        self.comp_f_input.setValue(1)
+        self.comp_f_input.setMinimumWidth(80)  # 增加宽度
+        param_layout.addWidget(f_label, 1, 4)
+        param_layout.addWidget(self.comp_f_input, 1, 5)
+        
+        # 添加验证设置
+        validate_label = QLabel("varify times:")
+        validate_label.setStyleSheet(label_style)
+        validate_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.validate_iterations = QSpinBox()
+        self.validate_iterations.setRange(10, 100)
+        self.validate_iterations.setValue(30)
+        self.validate_iterations.setMinimumWidth(80)
+        param_layout.addWidget(validate_label, 2, 0)
+        param_layout.addWidget(self.validate_iterations, 2, 1)
+        
+        # 验证开关
+        self.validate_checkbox = QRadioButton("use confidence")
+        self.validate_checkbox.setChecked(True)
+        param_layout.addWidget(self.validate_checkbox, 2, 2, 1, 2)
+        
+        # Set parameter constraints
+        self.comp_m_input.valueChanged.connect(self.update_comp_n_max)
+        self.comp_n_input.valueChanged.connect(self.update_comp_constraints)
+        self.comp_j_input.valueChanged.connect(self.update_comp_constraints)
+        self.comp_s_input.valueChanged.connect(self.update_comp_constraints)
+        
+        # 增加数字显示的样式
+        spinbox_style = """
+            QSpinBox {
+                font-size: 12pt;
+                padding: 4px;
+                background-color: white;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                width: 20px;
+            }
+        """
+        
+        # 应用样式到所有SpinBox
+        self.comp_m_input.setStyleSheet(spinbox_style)
+        self.comp_n_input.setStyleSheet(spinbox_style)
+        self.comp_k_input.setStyleSheet(spinbox_style)
+        self.comp_j_input.setStyleSheet(spinbox_style)
+        self.comp_s_input.setStyleSheet(spinbox_style)
+        self.comp_f_input.setStyleSheet(spinbox_style)
+        self.validate_iterations.setStyleSheet(spinbox_style)
+        
+        param_group.setLayout(param_layout)
+        layout.addWidget(param_group)
+        
+        # Top selection and button area
+        top_controls = QWidget()
+        top_layout = QHBoxLayout(top_controls)
+        
+        # Selection method (left side)
+        selection_frame = QFrame()
+        selection_layout = QHBoxLayout(selection_frame)
+        selection_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.comp_random_select = QRadioButton("Random N")
+        self.comp_random_select.setChecked(True)
+        
+        self.comp_manual_select = QRadioButton("Input N")
+        
+        selection_layout.addWidget(self.comp_random_select)
+        selection_layout.addWidget(self.comp_manual_select)
+        selection_layout.addStretch()
+        
+        top_layout.addWidget(selection_frame)
+        top_layout.addStretch()
+        
+        # Buttons (right side)
+        buttons_frame = QFrame()
+        buttons_layout = QHBoxLayout(buttons_frame)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(10)
+        
+        self.comp_start_btn = QPushButton("Start Comparison")
+        self.comp_start_btn.clicked.connect(self.start_algorithm_comparison)
+        buttons_layout.addWidget(self.comp_start_btn)
+        
+        self.comp_stop_btn = QPushButton("Stop")
+        self.comp_stop_btn.clicked.connect(self.stop_comparison)
+        self.comp_stop_btn.setEnabled(False)
+        buttons_layout.addWidget(self.comp_stop_btn)
+        
+        self.comp_export_btn = QPushButton("Export")
+        self.comp_export_btn.clicked.connect(self.export_comparison_results)
+        self.comp_export_btn.setEnabled(False)
+        buttons_layout.addWidget(self.comp_export_btn)
+        
+        self.comp_clear_btn = QPushButton("Clear")
+        self.comp_clear_btn.clicked.connect(self.clear_comparison)
+        buttons_layout.addWidget(self.comp_clear_btn)
+        
+        top_layout.addWidget(buttons_frame)
+        
+        layout.addWidget(top_controls)
+        
+        # User input area for manual entry
+        user_input_group = QGroupBox("User Input")
+        user_input_layout = QVBoxLayout(user_input_group)
+        
+        # Manual input area with custom styling
+        manual_input_layout = QHBoxLayout()
+        self.comp_sample_input = QLineEdit()
+        self.comp_sample_input.setPlaceholderText("Enter sample numbers separated by commas (e.g., 01,02,03)")
+        self.comp_sample_input.setEnabled(False)
+        manual_input_layout.addWidget(self.comp_sample_input)
+        
+        user_input_layout.addLayout(manual_input_layout)
+        
+        # Connect signals
+        self.comp_random_select.toggled.connect(self.toggle_comp_input_mode)
+        self.comp_manual_select.toggled.connect(self.toggle_comp_input_mode)
+        self.comp_n_input.valueChanged.connect(self.update_comp_n_dependent_ui)
+        self.comp_n_input.valueChanged.connect(self.populate_comp_default_samples)
+        
+        layout.addWidget(user_input_group)
+        
+        # Progress bars for each algorithm
+        progress_group = QGroupBox("Progress")
+        progress_layout = QGridLayout()
+        
+        # Genetic Algorithm progress
+        ga_label = QLabel("Genetic Algorithm:")
+        ga_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.ga_progress = QProgressBar()
+        self.ga_progress.setRange(0, 100)
+        self.ga_progress.setValue(0)
+        self.ga_progress.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                text-align: center;
+                height: 20px;
+                background-color: #f5f5f5;
+            }
+            QProgressBar::chunk {
+                background-color: #4CAF50;
+                width: 10px;
+                margin: 0.5px;
+            }
+        """)
+        progress_layout.addWidget(ga_label, 0, 0)
+        progress_layout.addWidget(self.ga_progress, 0, 1)
+        
+        # Simulated Annealing progress
+        sa_label = QLabel("Simulated Annealing:")
+        sa_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.sa_progress = QProgressBar()
+        self.sa_progress.setRange(0, 100)
+        self.sa_progress.setValue(0)
+        self.sa_progress.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                text-align: center;
+                height: 20px;
+                background-color: #f5f5f5;
+            }
+            QProgressBar::chunk {
+                background-color: #2196F3;
+                width: 10px;
+                margin: 0.5px;
+            }
+        """)
+        progress_layout.addWidget(sa_label, 1, 0)
+        progress_layout.addWidget(self.sa_progress, 1, 1)
+        
+        # Greedy Algorithm progress
+        greedy_label = QLabel("Greedy Algorithm:")
+        greedy_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.greedy_progress = QProgressBar()
+        self.greedy_progress.setRange(0, 100)
+        self.greedy_progress.setValue(0)
+        self.greedy_progress.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                text-align: center;
+                height: 20px;
+                background-color: #f5f5f5;
+            }
+            QProgressBar::chunk {
+                background-color: #FF9800;
+                width: 10px;
+                margin: 0.5px;
+            }
+        """)
+        progress_layout.addWidget(greedy_label, 2, 0)
+        progress_layout.addWidget(self.greedy_progress, 2, 1)
+        
+        progress_group.setLayout(progress_layout)
+        layout.addWidget(progress_group)
+        
+        # Results table
+        self.results_table = QTableWidget()
+        self.results_table.setColumnCount(6)  # 增加了置信度和相对置信度列
+        self.results_table.setHorizontalHeaderLabels(["Algorithm", "Execution Time", "# Combinations", "Confidence", "Relative Confidence", "Combinations"])
+        self.results_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)  # 更新为新的列索引
+        self.results_table.setMinimumHeight(200)
+        layout.addWidget(self.results_table)
+    
+    def update_comp_n_max(self):
+        """Update the maximum allowed value for n input based on m in comparison tab."""
+        m_value = self.comp_m_input.value()
+        # n can't be larger than m
+        self.comp_n_input.setMaximum(m_value)
+        # If current n is larger than m, adjust it
+        if self.comp_n_input.value() > m_value:
+            self.comp_n_input.setValue(m_value)
+        
+        # Update UI elements that depend on n
+        n_value = self.comp_n_input.value()
+        self.update_comp_n_dependent_ui(n_value)
+        
+        # Update default samples if manual selection is enabled
+        if hasattr(self, 'comp_manual_select') and self.comp_manual_select.isChecked():
+            self.populate_comp_default_samples(n_value)
+    
+    def update_comp_constraints(self):
+        """Update j, s, k constraints for comparison tab"""
+        n_value = self.comp_n_input.value()
+        j_value = self.comp_j_input.value()
+        s_value = self.comp_s_input.value()
+        
+        # Ensure j >= s
+        if j_value < s_value:
+            self.comp_j_input.setValue(s_value)
+        
+        # Ensure j <= n, k <= n
+        self.comp_j_input.setMaximum(n_value)
+        self.comp_k_input.setMaximum(min(7, n_value))
+        
+        # Ensure s <= j, s <= k
+        s_max = min(self.comp_j_input.value(), self.comp_k_input.value())
+        self.comp_s_input.setMaximum(min(7, s_max))
+    
+    def update_comp_n_dependent_ui(self, n_value):
+        """Update UI elements that depend on n value in comparison tab."""
+        # Update k and s inputs if they exist
+        if hasattr(self, 'comp_k_input'):
+            self.comp_k_input.setMaximum(n_value)
+        if hasattr(self, 'comp_s_input'):
+            self.comp_s_input.setMaximum(n_value)
+    
+    def toggle_comp_input_mode(self):
+        """Toggle between random and manual input modes in comparison tab."""
+        if self.comp_manual_select.isChecked():
+            self.comp_sample_input.setEnabled(True)
+            # Populate default samples when switching to manual mode
+            self.populate_comp_default_samples(self.comp_n_input.value())
+        else:
+            self.comp_sample_input.setEnabled(False)
+            self.comp_sample_input.setText("")
+    
+    def populate_comp_default_samples(self, n_value):
+        """Generate a default sequential list of samples based on n value for comparison tab."""
+        if n_value <= 0:
+            self.comp_sample_input.setText("")
+            return
+            
+        # Generate samples with leading zeros for single digits (01, 02, etc.)
+        samples = [f"{i:02d}" for i in range(1, n_value + 1)]
+        sample_text = ", ".join(samples)
+        self.comp_sample_input.setText(sample_text)
+    
+    def start_algorithm_comparison(self):
+        """Start the comparison of all three algorithms simultaneously."""
+        # Get parameter values
+        m = self.comp_m_input.value()
+        n = self.comp_n_input.value()
+        k = self.comp_k_input.value()
+        j = self.comp_j_input.value()
+        s = self.comp_s_input.value()
+        f = self.comp_f_input.value()
+        
+        # Validate parameters
+        if not (3 <= s <= j <= k <= n <= m):
+            QMessageBox.warning(self, "Parameter Error", 
+                              "Parameters must satisfy: 3 ≤ s ≤ j ≤ k ≤ n ≤ m")
+            return
+        
+        # Prepare samples
+        self.comp_samples = []
+        if self.comp_random_select.isChecked():
+            # Randomly select samples
+            all_samples = [f"{i:02d}" for i in range(1, m + 1)]
+            self.comp_samples = random.sample(all_samples, n)
+        else:
+            # Manual input samples
+            input_text = self.comp_sample_input.text().strip()
+            if not input_text:
+                QMessageBox.warning(self, "Input Error", "Please enter sample numbers")
+                return
+            
+            try:
+                input_samples = input_text.split(',')
+                self.comp_samples = [s.strip().zfill(2) for s in input_samples]
+                
+                # Validate samples
+                if len(self.comp_samples) != n:
+                    QMessageBox.warning(self, "Input Error", f"Please enter exactly {n} samples")
+                    return
+                
+                if len(set(self.comp_samples)) != len(self.comp_samples):
+                    QMessageBox.warning(self, "Input Error", "Sample numbers cannot be duplicated")
+                    return
+                
+                if any(not s.isdigit() or int(s) < 1 or int(s) > m for s in self.comp_samples):
+                    QMessageBox.warning(self, "Input Error", f"Sample numbers must be between 01-{m:02d}")
+                    return
+            except:
+                QMessageBox.warning(self, "Input Error", "Please enter valid sample numbers, separated by commas")
+                return
+        
+        # 排序样本但不显示它们
+        self.comp_samples.sort()
+        
+        # 删除以下代码
+        # samples_with_numbers = []
+        # for i, sample in enumerate(self.comp_samples, 1):
+        #    samples_with_numbers.append(f"{i}# {sample}")
+        # self.comp_samples_display.setText("\n".join(samples_with_numbers))
+        
+        # Update UI before starting
+        self.comp_start_btn.setEnabled(False)
+        self.comp_stop_btn.setEnabled(True)
+        
+        # Reset progress bars
+        self.ga_progress.setValue(0)
+        self.sa_progress.setValue(0)
+        self.greedy_progress.setValue(0)
+        
+        # Clear results table
+        self.results_table.setRowCount(0)
+        
+        # Create and start threads
+        self.ga_thread = ComputationThread(self.comp_samples, j, s, k, f, "genetic_algorithm")
+        self.sa_thread = ComputationThread(self.comp_samples, j, s, k, f, "simulated_annealing")
+        self.greedy_thread = ComputationThread(self.comp_samples, j, s, k, f, "greedy_algorithm")
+        
+        # Connect signals
+        self.ga_thread.result_ready.connect(lambda result, time: self.handle_comparison_result("Genetic Algorithm", result, time))
+        self.sa_thread.result_ready.connect(lambda result, time: self.handle_comparison_result("Simulated Annealing", result, time))
+        self.greedy_thread.result_ready.connect(lambda result, time: self.handle_comparison_result("Greedy Algorithm", result, time))
+        
+        self.ga_thread.progress_value.connect(self.ga_progress.setValue)
+        self.sa_thread.progress_value.connect(self.sa_progress.setValue)
+        self.greedy_thread.progress_value.connect(self.greedy_progress.setValue)
+        
+        # Start threads
+        self.ga_thread.start()
+        self.sa_thread.start()
+        self.greedy_thread.start()
+    
+    def handle_comparison_result(self, algorithm_name, results, execution_time):
+        """Handle results from algorithm comparison threads."""
+        # 存储算法结果用于验证
+        if not hasattr(self, 'algorithm_results'):
+            self.algorithm_results = {}
+        
+        self.algorithm_results[algorithm_name] = {
+            'results': results,
+            'execution_time': execution_time
+        }
+        
+        # 检查所有算法是否都已完成
+        if (hasattr(self, 'ga_thread') and not self.ga_thread.isRunning() and 
+            hasattr(self, 'sa_thread') and not self.sa_thread.isRunning() and 
+            hasattr(self, 'greedy_thread') and not self.greedy_thread.isRunning()):
+            
+            # 如果启用了置信度验证，则进行验证
+            if self.validate_checkbox.isChecked():
+                self.validate_all_results()
+            else:
+                # 不进行验证，直接显示结果
+                self.display_comparison_results()
+                
+            # 恢复UI状态
+            self.comp_start_btn.setEnabled(True)
+            self.comp_stop_btn.setEnabled(False)
+    
+    def validate_all_results(self):
+        """对所有算法结果进行置信度验证"""
+        # 创建验证器
+        j = self.comp_j_input.value()
+        s = self.comp_s_input.value()
+        k = self.comp_k_input.value()
+        f = self.comp_f_input.value()
+        iterations = self.validate_iterations.value()
+        
+        # 在新线程中运行验证，避免阻塞UI
+        self.validation_thread = ValidationThread(
+            self.comp_samples, 
+            self.algorithm_results,
+            j, s, k, f, 
+            iterations
+        )
+        self.validation_thread.validation_complete.connect(self.display_validation_results)
+        self.validation_thread.progress_update.connect(self.update_validation_progress)
+        
+        # 开始验证
+        self.results_table.setRowCount(0)
+        for i in range(len(self.algorithm_results)):
+            self.results_table.insertRow(i)
+        
+        # 更新UI
+        for i, (alg_name, data) in enumerate(self.algorithm_results.items()):
+            self.results_table.setItem(i, 0, QTableWidgetItem(alg_name))
+            self.results_table.setItem(i, 1, QTableWidgetItem(f"{data['execution_time']:.4f} sec"))
+            self.results_table.setItem(i, 2, QTableWidgetItem(str(len(data['results']))))
+            # 置信度列设置为"计算中..."
+            self.results_table.setItem(i, 3, QTableWidgetItem("计算中..."))
+            self.results_table.setItem(i, 4, QTableWidgetItem("计算中..."))
+            
+            # 组合列
+            combinations_text = ""
+            for j, group in enumerate(data['results'], 1):
+                if j > 1:
+                    combinations_text += "\n"
+                combinations_text += f"{j}# {', '.join(group)}"
+            combinations_item = QTableWidgetItem(combinations_text)
+            combinations_item.setToolTip(combinations_text)
+            self.results_table.setItem(i, 5, combinations_item)
+            self.results_table.setRowHeight(i, 100)
+        
+        # 启动验证线程
+        self.validation_thread.start()
+    
+    def update_validation_progress(self, message):
+        """更新验证进度"""
+        self.statusBar().showMessage(message)
+    
+    def display_validation_results(self, validation_results):
+        """显示验证结果"""
+        # 更新表格中的置信度数据
+        for i, (alg_name, result) in enumerate(validation_results.items()):
+            # 找到对应算法所在行
+            for row in range(self.results_table.rowCount()):
+                if self.results_table.item(row, 0).text() == alg_name:
+                    # 更新置信度和相对置信度
+                    confidence = result.get("confidence", 0.0)
+                    rel_confidence = result.get("relative_confidence", 0.0)
+                    
+                    confidence_item = QTableWidgetItem(f"{confidence:.4f}")
+                    rel_confidence_item = QTableWidgetItem(f"{rel_confidence:.4f}")
+                    
+                    # 设置单元格对齐方式
+                    confidence_item.setTextAlignment(Qt.AlignCenter)
+                    rel_confidence_item.setTextAlignment(Qt.AlignCenter)
+                    
+                    # 根据置信度值设置颜色
+                    if confidence >= 0.8:
+                        confidence_item.setBackground(QColor(200, 255, 200))  # 绿色
+                    elif confidence >= 0.6:
+                        confidence_item.setBackground(QColor(255, 255, 200))  # 黄色
+                    else:
+                        confidence_item.setBackground(QColor(255, 200, 200))  # 红色
+                    
+                    # 设置相对置信度的颜色
+                    if rel_confidence >= 0.9:
+                        rel_confidence_item.setBackground(QColor(200, 255, 200))  # 绿色
+                    elif rel_confidence >= 0.7:
+                        rel_confidence_item.setBackground(QColor(255, 255, 200))  # 黄色
+                    else:
+                        rel_confidence_item.setBackground(QColor(255, 200, 200))  # 红色
+                    
+                    # 更新表格
+                    self.results_table.setItem(row, 3, confidence_item)
+                    self.results_table.setItem(row, 4, rel_confidence_item)
+                    
+                    # 设置行背景色
+                    if "Genetic" in alg_name:
+                        color = QColor(240, 255, 240)
+                    elif "Simulated" in alg_name:
+                        color = QColor(240, 248, 255)
+                    else:
+                        color = QColor(255, 248, 240)
+                    
+                    # 只设置算法名称和组合列的背景色
+                    self.results_table.item(row, 0).setBackground(color)
+                    self.results_table.item(row, 5).setBackground(color)
+                    
+                    break
+        
+        # 按置信度排序
+        self.results_table.sortItems(4, Qt.DescendingOrder)
+        
+        # 清空状态栏
+        self.statusBar().clearMessage()
+        
+        # 启用导出按钮
+        self.comp_export_btn.setEnabled(True)
+        
+        # 找出置信度最高的算法
+        best_row = 0
+        best_alg = self.results_table.item(best_row, 0).text()
+        best_confidence = float(self.results_table.item(best_row, 4).text())
+        
+        QMessageBox.information(self, "complete",
+                               f"Complete！\nThe best is: {best_alg}\nConfidence: {best_confidence:.4f}")
+    
+    def display_comparison_results(self):
+        """不进行验证，直接显示比较结果"""
+        # 清空表格
+        self.results_table.setRowCount(0)
+        
+        # 添加算法结果
+        for alg_name, data in self.algorithm_results.items():
+            row_position = self.results_table.rowCount()
+            self.results_table.insertRow(row_position)
+            
+            # 算法名称
+            name_item = QTableWidgetItem(alg_name)
+            name_item.setTextAlignment(Qt.AlignCenter)
+            self.results_table.setItem(row_position, 0, name_item)
+            
+            # 执行时间
+            time_item = QTableWidgetItem(f"{data['execution_time']:.4f} sec")
+            time_item.setTextAlignment(Qt.AlignCenter)
+            time_item.setData(Qt.UserRole, data['execution_time'])
+            self.results_table.setItem(row_position, 1, time_item)
+            
+            # 组合数量
+            count_item = QTableWidgetItem(str(len(data['results'])))
+            count_item.setTextAlignment(Qt.AlignCenter)
+            self.results_table.setItem(row_position, 2, count_item)
+            
+            # 置信度和相对置信度列设置为N/A
+            na_item1 = QTableWidgetItem("N/A")
+            na_item1.setTextAlignment(Qt.AlignCenter)
+            na_item2 = QTableWidgetItem("N/A")
+            na_item2.setTextAlignment(Qt.AlignCenter)
+            self.results_table.setItem(row_position, 3, na_item1)
+            self.results_table.setItem(row_position, 4, na_item2)
+            
+            # 组合结果
+            combinations_text = ""
+            for i, group in enumerate(data['results'], 1):
+                if i > 1:
+                    combinations_text += "\n"
+                combinations_text += f"{i}# {', '.join(group)}"
+            
+            combinations_item = QTableWidgetItem(combinations_text)
+            combinations_item.setToolTip(combinations_text)
+            self.results_table.setItem(row_position, 5, combinations_item)
+            
+            # 设置行高
+            self.results_table.setRowHeight(row_position, 100)
+            
+            # 使用不同背景色标识不同算法
+            if "Genetic" in alg_name:
+                color = QColor(240, 255, 240)
+            elif "Simulated" in alg_name:
+                color = QColor(240, 248, 255)
+            else:
+                color = QColor(255, 248, 240)
+                
+            # 设置行背景色
+            for col in [0, 5]:  # 只设置算法名称和组合列的背景色
+                self.results_table.item(row_position, col).setBackground(color)
+        
+        # 按执行时间排序
+        self.results_table.sortItems(1, Qt.AscendingOrder)
+        
+        # 启用导出按钮
+        self.comp_export_btn.setEnabled(True)
+        
+        # 完成后显示比较结果
+        fastest_alg = self.results_table.item(0, 0).text()
+        QMessageBox.information(self, "Comparison Complete", 
+                              f"All algorithms finished.\nFastest: {fastest_alg}")
+    
+    def stop_comparison(self):
+        """Stop all comparison threads."""
+        if hasattr(self, 'ga_thread') and self.ga_thread.isRunning():
+            self.ga_thread.stop()
+        
+        if hasattr(self, 'sa_thread') and self.sa_thread.isRunning():
+            self.sa_thread.stop()
+        
+        if hasattr(self, 'greedy_thread') and self.greedy_thread.isRunning():
+            self.greedy_thread.stop()
+        
+        self.comp_start_btn.setEnabled(True)
+        self.comp_stop_btn.setEnabled(False)
+    
+    def clear_comparison(self):
+        """Clear all comparison inputs and results."""
+        # Reset parameters to default values
+        self.comp_m_input.setValue(45)
+        self.comp_n_input.setValue(7)
+        self.comp_k_input.setValue(6)
+        self.comp_j_input.setValue(4)
+        self.comp_s_input.setValue(4)
+        self.comp_f_input.setValue(1)
+        
+        # Reset sample selection
+        self.comp_random_select.setChecked(True)
+        self.comp_sample_input.clear()
+        
+        # Clear results table
+        self.results_table.setRowCount(0)
+        
+        # Reset progress bars
+        self.ga_progress.setValue(0)
+        self.sa_progress.setValue(0)
+        self.greedy_progress.setValue(0)
+        
+        # 禁用导出按钮
+        self.comp_export_btn.setEnabled(False)
+    
+    def export_comparison_results(self):
+        """导出算法比较结果为文本文件或PDF文件"""
+        # 检查是否有结果
+        if self.results_table.rowCount() == 0:
+            return
+        
+        # 确定文件过滤器
+        file_filter = "Text Files (*.txt)"
+        if PDF_AVAILABLE:
+            file_filter = "PDF Files (*.pdf);;Text Files (*.txt);;All Files (*.*)"
+        else:
+            file_filter = "Text Files (*.txt);;All Files (*.*)"
+        
+        # 选择保存路径
+        file_path, selected_filter = QFileDialog.getSaveFileName(
+            self, "Export Comparison Results", "", file_filter)
+        
+        if not file_path:
+            return
+        
+        try:
+            # 获取参数设置
+            m = self.comp_m_input.value()
+            n = self.comp_n_input.value()
+            k = self.comp_k_input.value()
+            j = self.comp_j_input.value()
+            s = self.comp_s_input.value()
+            f = self.comp_f_input.value()
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            has_confidence = self.validate_checkbox.isChecked()
+            
+            # 如果是PDF格式，询问是否添加AI总结
+            ai_summary = ""
+            if file_path.lower().endswith('.pdf') and PDF_AVAILABLE:
+                reply = QMessageBox.question(
+                    self, "Summary",
+                    "Would you like to add an analysis summary to your PDF?",
+                    QMessageBox.Yes | QMessageBox.No, 
+                    QMessageBox.Yes
+                )
+                
+                if reply == QMessageBox.Yes:
+                    ai_summary = self._get_ai_summary(m, n, k, j, s, f, has_confidence)
+                
+                # 导出带有AI总结的PDF
+                self._export_to_pdf(file_path, m, n, k, j, s, f, timestamp, has_confidence, ai_summary)
+            else:
+                self._export_to_text(file_path, m, n, k, j, s, f, timestamp, has_confidence)
+            
+            QMessageBox.information(self, "Export Successful", f"Comparison results exported to: {file_path}")
+        except Exception as e:
+            QMessageBox.warning(self, "Export Error", f"Error exporting comparison results: {str(e)}")
+            if file_path.lower().endswith('.pdf') and not PDF_AVAILABLE:
+                QMessageBox.information(self, "PDF Export", "PDF export requires the ReportLab library. Please install it using 'pip install reportlab'.")
+    
+    def _get_ai_summary(self, m, n, k, j, s, f, has_confidence):
+        """获取AI对比较结果的总结"""
+        # 创建输入对话框
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Analysis Summary")
+        dialog.setMinimumSize(600, 400)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # 添加说明文本
+        guide_label = QLabel("Please enter or edit the analysis summary of algorithm comparison results below. This text will be added to the PDF report.", dialog)
+        layout.addWidget(guide_label)
+        
+        # 总结输入区域
+        summary_text = QPlainTextEdit(dialog)
+        
+        # 添加默认总结
+        default_summary = self._generate_default_summary(has_confidence)
+        summary_text.setPlainText(default_summary)
+        layout.addWidget(summary_text)
+        
+        # 对话框按钮
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+        
+        # 显示对话框
+        if dialog.exec_() == QDialog.Accepted:
+            return summary_text.toPlainText()
+        else:
+            return ""
+    
+    def _generate_default_summary(self, has_confidence):
+        """生成默认的总结文本"""
+        # 查找执行时间最短的算法
+        fastest_alg = None
+        fastest_time = float('inf')
+        
+        # 查找置信度最高的算法
+        most_confident_alg = None
+        highest_confidence = -1
+        
+        # 收集所有算法数据
+        alg_data = []
+        
+        for row in range(self.results_table.rowCount()):
+            alg_name = self.results_table.item(row, 0).text()
+            
+            # 解析执行时间
+            time_text = self.results_table.item(row, 1).text()
+            exec_time = float(time_text.split()[0])  # 提取秒数
+            
+            if exec_time < fastest_time:
+                fastest_time = exec_time
+                fastest_alg = alg_name
+            
+            # 存储组合数量
+            comb_count = int(self.results_table.item(row, 2).text())
+            
+            # 检查是否有置信度数据
+            confidence_value = 0
+            if has_confidence:
+                confidence_text = self.results_table.item(row, 4).text()
+                if confidence_text != "N/A":
+                    try:
+                        confidence_value = float(confidence_text)
+                        if confidence_value > highest_confidence:
+                            highest_confidence = confidence_value
+                            most_confident_alg = alg_name
+                    except ValueError:
+                        pass
+            
+            alg_data.append((alg_name, exec_time, comb_count, confidence_value))
+        
+        # 生成总结文本
+        summary = "Algorithm Comparison Analysis:\n\n"
+        
+        # 执行时间分析
+        if fastest_alg:
+            summary += f"Efficiency Analysis: {fastest_alg} demonstrates the highest efficiency with an execution time of {fastest_time:.4f} seconds."
+            
+            # 计算与其他算法的时间比较
+            for alg, time, _, _ in alg_data:
+                if alg != fastest_alg:
+                    time_diff_percent = ((time - fastest_time) / fastest_time) * 100
+                    summary += f" In comparison, {alg} executed in {time:.4f} seconds, which is {time_diff_percent:.1f}% slower than the fastest algorithm."
+        
+        summary += "\n\n"
+        
+        # 置信度分析
+        if has_confidence and most_confident_alg:
+            summary += f"Reliability Analysis: {most_confident_alg} shows the highest relative confidence at {highest_confidence:.4f}, indicating superior result reliability."
+            
+            if most_confident_alg == fastest_alg:
+                summary += f" This means {fastest_alg} excels in both efficiency and reliability, making it an optimal choice."
+            else:
+                summary += f" However, the most efficient algorithm is {fastest_alg}, suggesting a trade-off between efficiency and reliability."
+        
+        summary += "\n\n"
+        
+        # 组合数量分析
+        summary += "Combination Generation Analysis: "
+        most_combinations = max(alg_data, key=lambda x: x[2])
+        least_combinations = min(alg_data, key=lambda x: x[2])
+        
+        if most_combinations[2] == least_combinations[2]:
+            summary += f"All algorithms generated the same number of combinations ({most_combinations[2]})."
+        else:
+            summary += f"{most_combinations[0]} generated the most combinations ({most_combinations[2]}), while {least_combinations[0]} produced the least ({least_combinations[2]})."
+            summary += f" This variation in combination count reflects different strategies employed by the algorithms in generating coverage sets."
+        
+        summary += "\n\n"
+        
+        # 总体建议
+        summary += "Recommendations: "
+        if has_confidence:
+            if most_confident_alg == fastest_alg:
+                summary += f"{fastest_alg} demonstrates the best overall performance, balancing both execution efficiency and result reliability. It is recommended as the preferred algorithm for this problem."
+            else:
+                summary += f"If prioritizing execution efficiency, {fastest_alg} is recommended; if result reliability is more important, {most_confident_alg} would be the better choice."
+        else:
+            summary += f"Based on execution efficiency considerations, {fastest_alg} is the most suitable algorithm for this problem."
+        
+        return summary
+
+    def _export_to_pdf(self, file_path, m, n, k, j, s, f, timestamp, has_confidence, ai_summary=""):
+        """导出为PDF格式，可选包含AI总结"""
+        if not PDF_AVAILABLE:
+            raise ImportError("ReportLab library is required for PDF export")
+        
+        # 创建文档对象
+        doc = SimpleDocTemplate(file_path, pagesize=letter)
+        elements = []
+        
+        # 创建样式
+        styles = getSampleStyleSheet()
+        title_style = styles['Heading1']
+        subtitle_style = styles['Heading2']
+        normal_style = styles['Normal']
+        
+        # 自定义段落样式
+        summary_style = ParagraphStyle(
+            'SummaryStyle',
+            parent=styles['Normal'],
+            fontSize=11,
+            leading=14,
+            spaceAfter=6,
+            textColor=colors.darkblue
+        )
+        
+        # 添加标题和时间戳
+        elements.append(Paragraph("Algorithm Comparison Results", title_style))
+        elements.append(Paragraph(f"Export Time: {timestamp}", normal_style))
+        elements.append(Spacer(1, 0.2 * inch))
+        
+        # 如果有AI总结，添加到PDF
+        if ai_summary:
+            elements.append(Paragraph("AI Analysis Summary", subtitle_style))
+            
+            # 创建摘要的背景框
+            summary_frame_style = TableStyle([
+                ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+                ('BACKGROUND', (0, 0), (-1, -1), colors.lightcyan),
+                ('LEFTPADDING', (0, 0), (-1, -1), 12),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+                ('TOPPADDING', (0, 0), (-1, -1), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ])
+            
+            # 将总结文本拆分为段落
+            paragraphs = []
+            for paragraph in ai_summary.split('\n\n'):
+                if paragraph.strip():
+                    paragraphs.append(Paragraph(paragraph, summary_style))
+                    paragraphs.append(Spacer(1, 0.1 * inch))
+            
+            # 创建一个只有一个单元格的表格，包含总结文本
+            if paragraphs:
+                summary_table = Table([[paragraphs]], colWidths=[6.5*inch])
+                summary_table.setStyle(summary_frame_style)
+                elements.append(summary_table)
+            
+            elements.append(Spacer(1, 0.3 * inch))
+        
+        # 添加参数设置
+        elements.append(Paragraph("Parameter Settings", subtitle_style))
+        
+        # 主算法参数
+        elements.append(Paragraph("Main Algorithm Parameters:", styles['Heading4']))
+        param_data = [
+            ["Parameter", "Value", "Description"],
+            ["m", str(m), "Total Samples"],
+            ["n", str(n), "Selected Samples"],
+            ["k", str(k), "Combination Size"],
+            ["j", str(j), "Subset Parameter"],
+            ["s", str(s), "Coverage Parameter"],
+            ["f", str(f), "Coverage Times"]
+        ]
+        
+        param_table = Table(param_data, colWidths=[1.5*inch, 1*inch, 3*inch])
+        param_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (1, 1), (1, -1), 'CENTER')
+        ]))
+        elements.append(param_table)
+        elements.append(Spacer(1, 0.2 * inch))
+        
+        # 验证参数
+        iterations = self.validate_iterations.value() if hasattr(self, 'validate_iterations') else "N/A"
+        validation_enabled = "Yes" if self.validate_checkbox.isChecked() else "No" if hasattr(self, 'validate_checkbox') else "N/A"
+        
+        elements.append(Paragraph("Validation Parameters:", styles['Heading4']))
+        validation_data = [
+            ["Parameter", "Value", "Description"],
+            ["Confidence Validation", validation_enabled, "Whether confidence calculation is enabled"],
+            ["Iterations", str(iterations), "Number of iterations for confidence calculation"],
+        ]
+        
+        validation_table = Table(validation_data, colWidths=[1.5*inch, 1*inch, 3*inch])
+        validation_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (1, 1), (1, -1), 'CENTER')
+        ]))
+        elements.append(validation_table)
+        elements.append(Spacer(1, 0.2 * inch))
+        
+        # 添加验证方法说明
+        if has_confidence:
+            elements.append(Paragraph("Validation Method:", styles['Heading4']))
+            validation_explanation = (
+                "The confidence values are calculated by running multiple validation iterations "
+                f"({iterations} times) to verify the stability and reliability of the solutions generated by each algorithm. "
+                "For each iteration, the algorithm's solutions are tested against random test cases to measure their "
+                "coverage and effectiveness. Higher confidence values indicate more robust and reliable solutions."
+            )
+            elements.append(Paragraph(validation_explanation, normal_style))
+            elements.append(Spacer(1, 0.3 * inch))
+        
+        # 添加样本集
+        elements.append(Paragraph("Sample Set", subtitle_style))
+        elements.append(Paragraph(', '.join(self.comp_samples), normal_style))
+        elements.append(Spacer(1, 0.2 * inch))
+        
+        # 添加比较结果表格
+        elements.append(Paragraph("Comparison Results", subtitle_style))
+        
+        # 表头
+        header = ["Algorithm", "Execution Time", "# Combinations"]
+        if has_confidence:
+            header.extend(["Confidence", "Rel. Confidence"])
+        
+        # 准备表格数据
+        table_data = [header]
+        
+        # 获取所有行的数据
+        for row in range(self.results_table.rowCount()):
+            row_data = []
+            row_data.append(self.results_table.item(row, 0).text())
+            row_data.append(self.results_table.item(row, 1).text())
+            row_data.append(self.results_table.item(row, 2).text())
+            if has_confidence:
+                row_data.append(self.results_table.item(row, 3).text())
+                row_data.append(self.results_table.item(row, 4).text())
+            table_data.append(row_data)
+        
+        # 创建并格式化表格
+        col_widths = [1.5*inch, 1.3*inch, 1.3*inch]
+        if has_confidence:
+            col_widths.extend([1*inch, 1.2*inch])
+        
+        results_table = Table(table_data, colWidths=col_widths)
+        
+        table_style = [
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER')
+        ]
+        
+        # 根据算法名称设置不同行的背景色
+        for i in range(1, len(table_data)):
+            if "Genetic" in table_data[i][0]:
+                table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightgreen))
+            elif "Simulated" in table_data[i][0]:
+                table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightblue))
+            else:
+                table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightcoral))
+        
+        results_table.setStyle(TableStyle(table_style))
+        elements.append(results_table)
+        elements.append(Spacer(1, 0.3 * inch))
+        
+        # 添加算法描述
+        elements.append(Paragraph("Algorithm Description", subtitle_style))
+        
+        algorithms_info = [
+            {
+                "name": "Genetic Algorithm",
+                "description": "A method for solving optimization problems based on natural selection. The algorithm creates a population of potential solutions and improves them through mutation, crossover, and selection operations across multiple generations.",
+                "color": colors.lightgreen
+            },
+            {
+                "name": "Simulated Annealing",
+                "description": "An optimization technique inspired by annealing in metallurgy. It starts with a high 'temperature' allowing exploration of the solution space, then gradually 'cools down' to refine the solution and avoid local optima.",
+                "color": colors.lightblue
+            },
+            {
+                "name": "Greedy Algorithm",
+                "description": "A simple approach that makes locally optimal choices at each step with the hope of finding a global optimum. It builds a solution incrementally, choosing the next element that offers the most immediate benefit.",
+                "color": colors.lightcoral
+            }
+        ]
+        
+        for algo_info in algorithms_info:
+            # 创建算法描述的背景框
+            algo_name = algo_info["name"]
+            algo_desc = algo_info["description"]
+            algo_color = algo_info["color"]
+            
+            # 使用表格创建带颜色的标题
+            header_data = [[Paragraph(algo_name, styles['Heading4'])]]
+            header_table = Table(header_data, colWidths=[6.5*inch])
+            header_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), algo_color),
+                ('LEFTPADDING', (0, 0), (-1, -1), 12),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+            ]))
+            elements.append(header_table)
+            
+            desc_data = [[Paragraph(algo_desc, normal_style)]]
+            desc_table = Table(desc_data, colWidths=[6.5*inch])
+            desc_table.setStyle(TableStyle([
+                ('LEFTPADDING', (0, 0), (-1, -1), 12),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+            ]))
+            elements.append(desc_table)
+            elements.append(Spacer(1, 0.1 * inch))
+        
+        elements.append(Spacer(1, 0.2 * inch))
+        
+        # 添加详细组合结果
+        elements.append(Paragraph("Detailed Combinations", subtitle_style))
+        
+        # 为每个算法添加详细组合
+        for row in range(self.results_table.rowCount()):
+            alg_name = self.results_table.item(row, 0).text()
+            combinations = self.results_table.item(row, 5).text()
+            
+            elements.append(Paragraph(alg_name, styles['Heading3']))
+            
+            # 分割组合文本并格式化
+            combo_lines = combinations.split('\n')
+            for line in combo_lines:
+                elements.append(Paragraph(line, normal_style))
+            
+            elements.append(Spacer(1, 0.2 * inch))
+        
+        # 生成PDF文档
+        doc.build(elements)
+    
+    def _export_to_text(self, file_path, m, n, k, j, s, f, timestamp, has_confidence):
+        """导出为文本格式"""
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.write(f"===== Algorithm Comparison Results =====\n")
+            file.write(f"Export Time: {timestamp}\n\n")
+            
+            file.write("Parameter Settings:\n")
+            file.write(f"  m = {m} (Total Samples)\n")
+            file.write(f"  n = {n} (Selected Samples)\n")
+            file.write(f"  k = {k} (Combination Size)\n")
+            file.write(f"  j = {j} (Subset Parameter)\n")
+            file.write(f"  s = {s} (Coverage Parameter)\n")
+            file.write(f"  f = {f} (Coverage Times)\n\n")
+            
+            file.write(f"Sample Set: {', '.join(self.comp_samples)}\n\n")
+            
+            # 表格标题
+            file.write(f"{'Algorithm':<20} {'Execution Time':<15} {'# Combinations':<15}")
+            if has_confidence:
+                file.write(f" {'Confidence':<12} {'Rel. Confidence':<15}")
+            file.write("\n")
+            file.write("-" * (50 + (30 if has_confidence else 0)) + "\n")
+            
+            # 获取所有行的数据
+            for row in range(self.results_table.rowCount()):
+                alg_name = self.results_table.item(row, 0).text()
+                exec_time = self.results_table.item(row, 1).text()
+                comb_count = self.results_table.item(row, 2).text()
+                confidence = self.results_table.item(row, 3).text()
+                rel_confidence = self.results_table.item(row, 4).text()
+                
+                file.write(f"{alg_name:<20} {exec_time:<15} {comb_count:<15}")
+                if has_confidence:
+                    file.write(f" {confidence:<12} {rel_confidence:<15}")
+                file.write("\n")
+            
+            file.write("\n\nDetailed Combinations:\n")
+            file.write("=" * 40 + "\n\n")
+            
+            # 输出每个算法的详细组合
+            for row in range(self.results_table.rowCount()):
+                alg_name = self.results_table.item(row, 0).text()
+                combinations = self.results_table.item(row, 5).text()
+                
+                file.write(f"{alg_name}:\n")
+                file.write("-" * 40 + "\n")
+                file.write(f"{combinations}\n\n")
+    
+# 添加验证线程类
+class ValidationThread(QThread):
+    """用于在后台执行算法结果验证的线程"""
+    validation_complete = pyqtSignal(dict)
+    progress_update = pyqtSignal(str)
+    
+    def __init__(self, samples, algorithm_results, j, s, k, f, iterations=30):
+        super().__init__()
+        self.samples = samples
+        self.algorithm_results = algorithm_results
+        self.j = j
+        self.s = s
+        self.k = k
+        self.f = f
+        self.iterations = iterations
+    
+    def run(self):
+        """执行验证过程"""
+        try:
+            self.progress_update.emit("开始验证算法结果置信度...")
+            
+            # 准备算法结果字典
+            solutions_dict = {alg_name: data['results'] for alg_name, data in self.algorithm_results.items()}
+            
+            # 创建验证器
+            validator = SolutionValidator(self.samples, self.j, self.s, self.k, self.f)
+            
+            # 进行验证
+            self.progress_update.emit(f"正在对 {len(solutions_dict)} 个算法结果进行验证 ({self.iterations} 次迭代)...")
+            validation_results = validator.compare_solutions(solutions_dict)
+            
+            # 验证完成
+            self.progress_update.emit("验证完成！")
+            
+            # 发送结果
+            self.validation_complete.emit(validation_results)
+            
+        except Exception as e:
+            self.progress_update.emit(f"验证过程出错: {str(e)}")
+    
