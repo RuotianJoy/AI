@@ -181,7 +181,7 @@ class GeneticOptimizer:
 
         return (creator.Individual(mutated_ind),)
 
-    def optimize(self, population_size=100, generations=150, cxpb=0.5, mutpb=0.2):
+    def optimize(self, population_size=200, generations=120, cxpb=0.3, mutpb=0.5):
         """优化执行，支持进度更新"""
         # Initialize parameters
         self.population_size = population_size
