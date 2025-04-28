@@ -12,6 +12,7 @@ import random
 import time
 from genetic_algorithm import GeneticOptimizer
 from simulated_annealing import SimulatedAnnealingOptimizer
+from greedy_optimizer import GreedyOptimizer
 
 class ComputationThread(QThread):
     # Define signals for thread communication
@@ -28,6 +29,12 @@ class ComputationThread(QThread):
         self.k = k
         self.f = f
         self.algorithm = algorithm
+        self.stopped = False
+    
+    def stop(self):
+        """Set the stopped flag to pause the thread"""
+        self.stopped = True
+        self.progress_update.emit("Calculation paused by user")
     
     def run(self):
         try:
@@ -41,14 +48,20 @@ class ComputationThread(QThread):
             # Create optimizer based on selected algorithm
             if self.algorithm == "genetic_algorithm":
                 optimizer = GeneticOptimizer(self.samples, self.j, self.s, self.k, self.f)
-            else:  # simulated_annealing
+            elif self.algorithm == "simulated_annealing":
                 optimizer = SimulatedAnnealingOptimizer(self.samples, self.j, self.s, self.k, self.f)
+            else:  # greedy_algorithm
+                optimizer = GreedyOptimizer(self.samples, self.j, self.s, self.k, self.f)
             
             # Setup progress callback for the optimizer
             optimizer.set_progress_callback(self.update_progress)
             
             # Run optimization
             best_solution = optimizer.optimize()
+            
+            # Check if stopped
+            if self.stopped:
+                self.progress_update.emit("Calculation was paused. Results may be incomplete.")
             
             # Calculate execution time
             execution_time = time.time() - start_time
@@ -68,6 +81,9 @@ class ComputationThread(QThread):
         self.progress_value.emit(progress_percent)
         if status_message:
             self.progress_update.emit(status_message)
+        
+        # Check if thread should stop
+        return not self.stopped
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -265,7 +281,7 @@ class MainWindow(QMainWindow):
         title_label.setStyleSheet("color: #333333;")
         
         # Subtitle - 更简洁的副标题
-        subtitle_label = QLabel("Genetic Algorithm Optimization")
+        subtitle_label = QLabel("Multiple Algorithm Optimization")
         subtitle_label.setAlignment(Qt.AlignCenter)
         subtitle_label.setStyleSheet("color: #666666; font-size: 12pt;")
         
@@ -418,6 +434,8 @@ class MainWindow(QMainWindow):
         self.algorithm_combo = QComboBox()
         self.algorithm_combo.addItem("Genetic Algorithm")
         self.algorithm_combo.addItem("Simulated Annealing")
+        self.algorithm_combo.addItem("Greedy Algorithm")
+        self.algorithm_combo.currentIndexChanged.connect(self.on_algorithm_changed)
         param_layout.addWidget(algorithm_label, 2, 0)
         param_layout.addWidget(self.algorithm_combo, 2, 1)
         
@@ -460,6 +478,11 @@ class MainWindow(QMainWindow):
         self.calculate_btn = QPushButton("Execute")
         self.calculate_btn.clicked.connect(self.calculate_optimal_groups)
         buttons_layout.addWidget(self.calculate_btn)
+        
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.clicked.connect(self.stop_calculation)
+        self.stop_btn.setEnabled(False)
+        buttons_layout.addWidget(self.stop_btn)
         
         self.save_btn = QPushButton("Store")
         self.save_btn.clicked.connect(self.save_results)
@@ -508,8 +531,11 @@ class MainWindow(QMainWindow):
         
         user_input_layout.addLayout(manual_input_layout)
         
-        # Connect manual/random selection buttons
-        self.random_select.toggled.connect(lambda checked: self.sample_input.setEnabled(not checked))
+        # Connect signals
+        self.random_select.toggled.connect(self.toggle_input_mode)
+        self.manual_select.toggled.connect(self.toggle_input_mode)
+        self.n_input.valueChanged.connect(self.update_n_dependent_ui)
+        self.n_input.valueChanged.connect(self.populate_default_samples)
         
         layout.addWidget(user_input_group)
         
@@ -552,6 +578,17 @@ class MainWindow(QMainWindow):
         id_layout.addWidget(self.id_label, 0, Qt.AlignCenter)
         
         layout.addLayout(id_layout)
+    
+    def populate_default_samples(self, n_value):
+        """Generate a default sequential list of samples based on n value."""
+        if n_value <= 0:
+            self.sample_input.setText("")
+            return
+            
+        # Generate samples with leading zeros for single digits (01, 02, etc.)
+        samples = [f"{i:02d}" for i in range(1, n_value + 1)]
+        sample_text = ", ".join(samples)
+        self.sample_input.setText(sample_text)
     
     def setup_results_tab(self, tab):
         """Set result management tab page"""
@@ -655,10 +692,32 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(splitter)
     
+    def toggle_input_mode(self):
+        """Toggle between random and manual input modes."""
+        if self.manual_select.isChecked():
+            self.sample_input.setEnabled(True)
+            # Populate default samples when switching to manual mode
+            self.populate_default_samples(self.n_input.value())
+        else:
+            self.sample_input.setEnabled(False)
+            self.sample_input.setText("")
+    
     def update_n_max(self):
-        """Update n maximum value to m"""
+        """Update the maximum allowed value for n input based on m."""
         m_value = self.m_input.value()
-        self.n_input.setMaximum(min(25, m_value))
+        # n can't be larger than m
+        self.n_input.setMaximum(m_value)
+        # If current n is larger than m, adjust it
+        if self.n_input.value() > m_value:
+            self.n_input.setValue(m_value)
+        
+        # Update UI elements that depend on n
+        n_value = self.n_input.value()
+        self.update_n_dependent_ui(n_value)
+        
+        # Update default samples if manual selection is enabled
+        if hasattr(self, 'manual_select') and self.manual_select.isChecked():
+            self.populate_default_samples(n_value)
     
     def update_constraints(self):
         """Update j, s, k constraints"""
@@ -909,9 +968,10 @@ class MainWindow(QMainWindow):
         
         self.samples_display.setText("\n".join(samples_with_numbers))
         
-        # Disable calculate button
+        # Disable calculate button and enable stop button
         self.calculate_btn.setEnabled(False)
         self.calculate_btn.setText("Processing...")
+        self.stop_btn.setEnabled(True)
         
         # Clear result display
         self.result_display.clear()
@@ -972,6 +1032,15 @@ class MainWindow(QMainWindow):
             self.calculate_btn.setText("Execute")
             self.progress_bar.setVisible(False)
     
+    def stop_calculation(self):
+        """Stop the running calculation thread"""
+        if hasattr(self, 'computation_thread') and self.computation_thread.isRunning():
+            self.computation_thread.stop()
+            self.stop_btn.setEnabled(False)
+            self.calculate_btn.setEnabled(True)
+            self.calculate_btn.setText("Execute")
+            self.result_display.append("Calculation paused by user. Results may be incomplete.")
+    
     def handle_result(self, results, execution_time):
         """Handle calculation result"""
         self.current_results = results
@@ -1003,9 +1072,10 @@ class MainWindow(QMainWindow):
         # Enable store button
         self.save_btn.setEnabled(True)
         
-        # Restore calculate button
+        # Restore calculate button and disable stop button
         self.calculate_btn.setEnabled(True)
         self.calculate_btn.setText("Execute")
+        self.stop_btn.setEnabled(False)
         
         # Hide progress bar
         self.progress_bar.setVisible(False)
@@ -1017,6 +1087,10 @@ class MainWindow(QMainWindow):
     def handle_error(self, error_message):
         """Handle calculation error"""
         self.result_display.append(f"Calculation error: {error_message}")
+        # Reset buttons
+        self.calculate_btn.setEnabled(True)
+        self.calculate_btn.setText("Execute")
+        self.stop_btn.setEnabled(False)
     
     def save_results(self):
         """Save calculation results to database"""
@@ -1399,9 +1473,28 @@ class MainWindow(QMainWindow):
         # Clear ID label
         self.id_label.setText("")
         
-        # Disable save button
+        # Reset buttons
+        self.stop_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
-        
-        # Reset calculation button
         self.calculate_btn.setEnabled(True)
-        self.calculate_btn.setText("Execute") 
+        self.calculate_btn.setText("Execute")
+    
+    def update_n_dependent_ui(self, n_value):
+        """Update UI elements that depend on n value."""
+        # Update k and s inputs if they exist
+        if hasattr(self, 'k_input'):
+            self.k_input.setMaximum(n_value)
+        if hasattr(self, 's_input'):
+            self.s_input.setMaximum(n_value)
+    
+    def on_algorithm_changed(self, index):
+        """处理算法选择变化"""
+        algorithm_names = ["Genetic Algorithm", "Simulated Annealing", "Greedy Algorithm"]
+        if index >= 0 and index < len(algorithm_names):
+            self.result_display.clear()
+            self.result_display.append(f"已选择: {algorithm_names[index]}")
+            
+            # 清除之前的结果
+            self.current_results = []
+            self.save_btn.setEnabled(False)
+        

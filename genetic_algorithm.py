@@ -39,7 +39,8 @@ class GeneticOptimizer:
     def update_progress(self, percent, message=None):
         """Update progress if callback is set"""
         if self.progress_callback:
-            self.progress_callback(percent, message)
+            return self.progress_callback(percent, message)
+        return True  # Continue by default if no callback
 
     def _register_operations(self):
         """注册遗传算法操作"""
@@ -197,7 +198,9 @@ class GeneticOptimizer:
         best_fitness = 0
         
         # Initial progress update
-        self.update_progress(0, "Starting optimization...")
+        should_continue = self.update_progress(0, "Starting optimization...")
+        if not should_continue:
+            return list(pop[0]) if pop else []
         
         # Loop through generations
         for gen in range(generations):
@@ -206,7 +209,10 @@ class GeneticOptimizer:
             
             # Update progress
             status_message = f"Generation {gen+1}/{generations}"
-            self.update_progress(progress, status_message)
+            should_continue = self.update_progress(progress, status_message)
+            if not should_continue:
+                # Return the best solution found so far
+                return list(hof[0]) if hof else list(pop[0]) if pop else []
             
             # Select the next generation individuals
             offspring = self.toolbox.select(pop, len(pop))
@@ -227,7 +233,9 @@ class GeneticOptimizer:
                 # Check if we have a new best individual
                 if hof[0].fitness.values[0] > best_fitness:
                     best_fitness = hof[0].fitness.values[0]
-                    self.update_progress(progress, f"New best solution found (fitness: {best_fitness:.2f})")
+                    should_continue = self.update_progress(progress, f"New best solution found (fitness: {best_fitness:.2f})")
+                    if not should_continue:
+                        return list(hof[0])
             
             # Replace the current population by the offspring
             pop[:] = offspring
@@ -239,7 +247,7 @@ class GeneticOptimizer:
         self.update_progress(100, "Optimization complete")
         
         # Return the best solution
-        return list(hof[0])
+        return list(hof[0]) if hof else list(pop[0]) if pop else []
     
     def initialize_population(self):
         """Create initial population of random combinations"""

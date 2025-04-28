@@ -29,7 +29,8 @@ class SimulatedAnnealingOptimizer:
     def _update_progress(self, progress_percent, message=None):
         """Update progress through callback if available"""
         if self.progress_callback:
-            self.progress_callback(progress_percent, message)
+            return self.progress_callback(progress_percent, message)
+        return True  # Continue by default if no callback
     
     def init_solution(self) -> List[Tuple[str, ...]]:
         """初始化解：贪心方法生成初始k大小的组合集合"""
@@ -402,192 +403,210 @@ class SimulatedAnnealingOptimizer:
     
     def optimize(self, initial_temp=10.0, cooling_rate=0.995, 
                 stopping_temp=0.0001, max_iterations=100000, verbose=True):
-        """模拟退火算法主过程"""
-        # 初始化解和能量
-        current_solution = self.init_solution()
-        current_energy, current_coverage = self.evaluate_solution(current_solution)
+        """模拟退火算法主函数"""
+        # 生成初始解
+        if verbose:
+            print("Generating initial solution...")
         
-        # 跟踪最优解
+        # 初始化进度
+        should_continue = self._update_progress(0, "Generating initial solution...")
+        if not should_continue:
+            return []
+            
+        current_solution = self.init_solution()
+        if not current_solution:
+            # 如果初始化失败，随机生成一个解
+            current_solution = [tuple(sorted(random.sample(self.samples, self.k)))]
+        
+        # 评估初始解
+        current_energy, current_coverage = self.evaluate_solution(current_solution)
         best_solution = list(current_solution)
         best_energy = current_energy
         best_coverage = current_coverage
         
+        # 初始化温度
         temperature = initial_temp
-        iteration = 0
         
-        # 没有改进的迭代次数
-        no_improve = 0
-        max_no_improve = 2000  # 如果2000次迭代没有改进，重启
+        # 性能统计
+        iterations = 0
+        accepted = 0
+        improved = 0
         
-        # 用于记录进度
-        prev_report_time = time.time()
-        report_interval = 2.0  # 每2秒报告一次进度
-        
-        # 重启计数器
-        restarts = 0
-        max_restarts = 5  # 最多重启5次
-        
-        while temperature > stopping_temp and iteration < max_iterations and restarts < max_restarts:
-            # 计算进度百分比
-            progress = min(100, int((1 - temperature/initial_temp) * 100))
-            self._update_progress(progress, f"Temperature: {temperature:.6f}, Current energy: {current_energy:.4f}")
-            
-            # 生成邻居解
-            new_solution = self.generate_neighbor(current_solution)
-            new_energy, new_coverage = self.evaluate_solution(new_solution)
-            
-            # 决定是否接受新解
-            accept_probability = self.acceptance_probability(current_energy, new_energy, temperature)
-            if accept_probability > random.random():
-                current_solution = new_solution
-                current_energy = new_energy
-                current_coverage = new_coverage
-                
-                # 检查是否为新的最优解
-                if new_energy < best_energy or (new_energy == best_energy and new_coverage > best_coverage):
-                    best_solution = list(new_solution)
-                    best_energy = new_energy
-                    best_coverage = new_coverage
-                    no_improve = 0
-                    
-                    if verbose:
-                        self._update_progress(progress, f"New best solution found! Coverage: {best_coverage:.4f}, Groups: {len(best_solution)}")
-                else:
-                    no_improve += 1
-            else:
-                no_improve += 1
-            
-            # 如果长时间没有改进，重启搜索
-            if no_improve >= max_no_improve:
-                if best_coverage >= 1.0:
-                    # 如果已经找到了完全覆盖的解，进行优化重启
-                    if verbose:
-                        self._update_progress(progress, f"No improvement for {max_no_improve} iterations, optimizing restart ({restarts+1}/{max_restarts})")
-                    
-                    # 从最优解开始，尝试删除一个组合
-                    if len(best_solution) > 1:
-                        optimization_attempt = list(best_solution)
-                        # 随机删除一个组合
-                        optimization_attempt.pop(random.randrange(len(optimization_attempt)))
-                        
-                        # 验证覆盖率
-                        _, optimization_coverage = self.evaluate_solution(optimization_attempt)
-                        
-                        if optimization_coverage >= 1.0:
-                            # 如果删除后仍然完全覆盖，采用新解
-                            current_solution = optimization_attempt
-                            current_energy, current_coverage = self.evaluate_solution(current_solution)
-                            
-                            # 更新最优解
-                            best_solution = list(current_solution)
-                            best_energy = current_energy
-                            best_coverage = current_coverage
-                            
-                            if verbose:
-                                self._update_progress(progress, f"Optimization successful! New group count: {len(best_solution)}")
-                        else:
-                            # 否则重新初始化
-                            current_solution = self.init_solution()
-                            current_energy, current_coverage = self.evaluate_solution(current_solution)
-                    else:
-                        # 如果只有一个组合，无法进一步优化，结束算法
-                        break
-                else:
-                    # 如果尚未找到完全覆盖的解，普通重启
-                    if verbose:
-                        self._update_progress(progress, f"No improvement for {max_no_improve} iterations, normal restart ({restarts+1}/{max_restarts})")
-                    
-                    # 重新初始化解
-                    current_solution = self.init_solution()
-                    current_energy, current_coverage = self.evaluate_solution(current_solution)
-                
-                no_improve = 0
-                restarts += 1
-                
-                # 恢复更高的温度以进行更广泛的搜索
-                temperature = initial_temp * (0.8 ** restarts)
-            
-            # 降低温度
-            temperature *= cooling_rate
-            iteration += 1
-            
-            # 定期报告进度
-            current_time = time.time()
-            if verbose and current_time - prev_report_time > report_interval:
-                self._update_progress(progress, f"Iteration {iteration}: Temperature = {temperature:.6f}, Current energy = {current_energy:.4f}, "
-                      f"Best energy = {best_energy:.4f}, Coverage = {best_coverage:.4f}, Groups = {len(best_solution)}")
-                prev_report_time = current_time
-            
-            # 如果已找到完全覆盖且组数较小的解，提前终止
-            if best_coverage >= 1.0 and len(best_solution) <= self.k and no_improve > 500:
-                if verbose:
-                    self._update_progress(100, "Ideal solution found, terminating early")
-                break
+        # 为了计算进度百分比
+        total_iterations = min(max_iterations, int(math.log(stopping_temp / initial_temp) / math.log(cooling_rate)))
         
         if verbose:
-            self._update_progress(100, f"\nOptimization complete! Total iterations: {iteration}, Restarts: {restarts}")
-            self._update_progress(100, f"Best solution coverage: {best_coverage:.4f}")
-            self._update_progress(100, f"Best solution contains {len(best_solution)} groups")
+            print(f"Initial solution: {len(current_solution)} combinations, coverage: {current_coverage:.2%}, energy: {current_energy}")
+            print(f"Starting simulated annealing with temperature: {temperature}...")
         
-        # 如果最终覆盖率未达到100%，尝试补充
-        if best_coverage < 1.0 and verbose:
-            self._update_progress(100, "Warning: Could not find 100% coverage solution, attempting to supplement...")
+        should_continue = self._update_progress(1, f"Initial solution: {len(current_solution)} combinations, coverage: {current_coverage:.2%}")
+        if not should_continue:
+            return best_solution
+        
+        # 主循环
+        iteration_count = 0
+        last_improvement = 0
+        improved_count = 0
+        
+        while temperature > stopping_temp and iterations < max_iterations:
+            # 更新进度
+            progress = min(100, int(100 * iterations / total_iterations))
+            if iterations % 100 == 0:  # 每100次迭代更新一次进度，避免过于频繁
+                should_continue = self._update_progress(progress, f"Temperature: {temperature:.4f}, Best coverage: {best_coverage:.2%}, Groups: {len(best_solution)}")
+                if not should_continue:
+                    return best_solution  # 如果用户暂停，返回当前最佳解
             
-            # 找出未覆盖的j子集
-            coverage_count = defaultdict(int)
-            for j_sub in self.j_subsets:
-                j_set = set(j_sub)
-                for group in best_solution:
-                    if len(j_set.intersection(set(group))) >= self.s:
-                        coverage_count[j_sub] += 1
+            # 生成邻居解
+            neighbor = self.generate_neighbor(current_solution)
             
-            uncovered = [j_sub for j_sub in self.j_subsets if coverage_count[j_sub] < self.f]
-            self._update_progress(100, f"Uncovered j-subsets: {len(uncovered)}/{len(self.j_subsets)}")
+            # 评估邻居解
+            neighbor_energy, neighbor_coverage = self.evaluate_solution(neighbor)
             
-            # 尝试贪心补充
-            while uncovered and len(best_solution) < 100:  # 设置上限以防无限循环
-                # 找到能覆盖最多未覆盖j子集的组合
-                best_coverage_improvement = 0
-                best_new_group = None
+            # 计算能量差
+            energy_delta = neighbor_energy - current_energy
+            
+            # 计算邻居解与当前最佳解的能量差
+            best_delta = neighbor_energy - best_energy
+            
+            # 如果邻居解更好（能量更低）或者通过概率接受较差的解
+            if (energy_delta < 0) or (random.random() < self.acceptance_probability(current_energy, neighbor_energy, temperature)):
+                # 接受邻居解
+                current_solution = neighbor
+                current_energy = neighbor_energy
+                current_coverage = neighbor_coverage
+                accepted += 1
                 
-                for _ in range(100):  # 增加尝试次数
-                    candidate = tuple(sorted(random.sample(self.samples, self.k)))
-                    if candidate in best_solution:
-                        continue
+                # 如果邻居解比最佳解更好
+                if best_delta < 0 or (best_delta == 0 and len(neighbor) < len(best_solution)):
+                    best_solution = list(neighbor)
+                    best_energy = neighbor_energy
+                    best_coverage = neighbor_coverage
+                    improved += 1
+                    last_improvement = iterations
+                    improved_count += 1
                     
-                    coverage_improvement = 0
-                    for j_sub in uncovered:
-                        j_set = set(j_sub)
-                        if len(j_set.intersection(set(candidate))) >= self.s:
-                            coverage_improvement += 1
+                    # 报告改进
+                    if verbose and improved_count % 10 == 0:
+                        print(f"Improvement: coverage {best_coverage:.2%}, groups: {len(best_solution)}, energy: {best_energy}, temp: {temperature:.4f}")
                     
-                    if coverage_improvement > best_coverage_improvement:
-                        best_coverage_improvement = coverage_improvement
-                        best_new_group = candidate
+                    should_continue = self._update_progress(progress, f"New best solution! Coverage: {best_coverage:.2%}, Groups: {len(best_solution)}")
+                    if not should_continue:
+                        return best_solution  # 如果用户暂停，返回当前最佳解
+            
+            # 如果达到了100%覆盖率，且优化了一段时间没有改进，则尝试重新开始
+            if best_coverage == 1.0 and iterations - last_improvement > 1000:
+                # 尝试重新优化，专注于减少组合数量
+                temp_solution = list(best_solution)
                 
-                if best_new_group and best_coverage_improvement > 0:
-                    best_solution.append(best_new_group)
+                # 从最少贡献的组合开始尝试删除
+                for _ in range(min(100, iterations - last_improvement)):
+                    # 不能删光
+                    if len(temp_solution) <= 1:
+                        break
+                        
+                    # 计算每个组合的贡献
+                    contributions = []
+                    for i, group in enumerate(temp_solution):
+                        # 移除这个组合后的覆盖率
+                        test_solution = temp_solution[:i] + temp_solution[i+1:]
+                        _, test_coverage = self.evaluate_solution(test_solution)
+                        
+                        # 如果移除后仍有100%覆盖，记录此组合
+                        if test_coverage == 1.0:
+                            contributions.append((i, group))
                     
-                    # 更新未覆盖列表
-                    new_coverage_count = defaultdict(int)
-                    for j_sub in self.j_subsets:
-                        j_set = set(j_sub)
-                        for group in best_solution:
-                            if len(j_set.intersection(set(group))) >= self.s:
-                                new_coverage_count[j_sub] += 1
+                    # 如果有可以移除的组合，则随机移除一个
+                    if contributions:
+                        remove_idx, _ = random.choice(contributions)
+                        temp_solution.pop(remove_idx)
+                    else:
+                        break
+                
+                # 评估优化后的解
+                temp_energy, temp_coverage = self.evaluate_solution(temp_solution)
+                
+                # 如果覆盖率仍为100%且能量更低，接受新解
+                if temp_coverage == 1.0 and (temp_energy < best_energy or (temp_energy == best_energy and len(temp_solution) < len(best_solution))):
+                    best_solution = list(temp_solution)
+                    best_energy = temp_energy
+                    best_coverage = temp_coverage
                     
-                    uncovered = [j_sub for j_sub in self.j_subsets if new_coverage_count[j_sub] < self.f]
+                    # 重置计数器
+                    last_improvement = iterations
                     
+                    # 报告改进
                     if verbose:
-                        self._update_progress(100, f"After adding group, uncovered j-subsets: {len(uncovered)}/{len(self.j_subsets)}")
-                else:
-                    # 无法找到能改进覆盖的组合，退出循环
-                    break
+                        print(f"Optimization: reduced to {len(best_solution)} groups while maintaining 100% coverage")
+                    
+                    should_continue = self._update_progress(progress, f"Optimized solution! Groups reduced to: {len(best_solution)}")
+                    if not should_continue:
+                        return best_solution  # 如果用户暂停，返回当前最佳解
             
-            # 最终检查覆盖情况
-            _, final_coverage = self.evaluate_solution(best_solution)
-            if verbose:
-                self._update_progress(100, f"Final coverage after supplementation: {final_coverage:.4f}, Groups: {len(best_solution)}")
+            # 衰减温度
+            temperature *= cooling_rate
+            
+            # 增加迭代计数
+            iterations += 1
+            iteration_count += 1
+            
+            # 如果长时间没有改进，可以考虑重启或调整参数
+            if iterations - last_improvement > 5000:
+                # 尝试重启算法，但保留最佳解
+                if verbose:
+                    print(f"Restarting: No improvement for {iterations - last_improvement} iterations")
+                
+                should_continue = self._update_progress(progress, f"Restarting search with best coverage: {best_coverage:.2%}")
+                if not should_continue:
+                    return best_solution  # 如果用户暂停，返回当前最佳解
+                
+                # 保留一部分最佳解，混合一些新的随机组合
+                if random.random() < 0.5 and best_coverage > 0.9:
+                    # 保留最佳解的一部分
+                    retained = random.sample(best_solution, max(1, len(best_solution) // 2))
+                    # 添加一些新组合
+                    for _ in range(max(1, len(best_solution) // 2)):
+                        new_group = tuple(sorted(random.sample(self.samples, self.k)))
+                        if new_group not in retained:
+                            retained.append(new_group)
+                    
+                    current_solution = retained
+                else:
+                    # 完全重新生成解
+                    current_solution = self.init_solution()
+                
+                current_energy, current_coverage = self.evaluate_solution(current_solution)
+                
+                # 增加温度以允许更多探索
+                temperature = max(temperature * 2, initial_temp / 2)
+                
+                # 重置计数器
+                last_improvement = iterations
+            
+            # 每1000次迭代添加少量随机性
+            if iterations % 1000 == 0:
+                # 概率性地添加一个随机组合
+                if random.random() < 0.3:
+                    new_group = tuple(sorted(random.sample(self.samples, self.k)))
+                    if new_group not in current_solution:
+                        current_solution.append(new_group)
+                        current_energy, current_coverage = self.evaluate_solution(current_solution)
+                
+                # 如果当前解太长，尝试移除一些组合
+                if len(current_solution) > len(best_solution) * 1.5:
+                    # 随机移除几个组合
+                    for _ in range(min(3, len(current_solution) - len(best_solution))):
+                        if len(current_solution) > 1:  # 确保至少保留一个组合
+                            current_solution.pop(random.randrange(len(current_solution)))
+                    current_energy, current_coverage = self.evaluate_solution(current_solution)
+        
+        # 报告最终结果
+        if verbose:
+            print("\nSimulated Annealing Completed!")
+            print(f"Best solution: {len(best_solution)} combinations, coverage: {best_coverage:.2%}, energy: {best_energy}")
+            print(f"Iterations: {iterations}, Accepted: {accepted}, Improved: {improved}")
+        
+        # 完成进度更新
+        self._update_progress(100, f"Optimization complete. Final solution has {len(best_solution)} groups with {best_coverage:.2%} coverage")
         
         return best_solution
 
