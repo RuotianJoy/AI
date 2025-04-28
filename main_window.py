@@ -2007,6 +2007,7 @@ class MainWindow(QMainWindow):
         )
         self.validation_thread.validation_complete.connect(self.display_validation_results)
         self.validation_thread.progress_update.connect(self.update_validation_progress)
+        self.validation_thread.error_occurred.connect(self.handle_error)  # 连接错误信号
         
         # 开始验证
         self.results_table.setRowCount(0)
@@ -2401,314 +2402,334 @@ class MainWindow(QMainWindow):
         return summary
 
     def _export_to_pdf(self, file_path, m, n, k, j, s, f, timestamp, has_confidence, ai_summary=""):
-        """导出为PDF格式，可选包含AI总结"""
-        if not PDF_AVAILABLE:
-            raise ImportError("ReportLab library is required for PDF export")
-        
-        # 创建文档对象
-        doc = SimpleDocTemplate(file_path, pagesize=letter)
-        elements = []
-        
-        # 创建样式
-        styles = getSampleStyleSheet()
-        title_style = styles['Heading1']
-        subtitle_style = styles['Heading2']
-        normal_style = styles['Normal']
-        
-        # 自定义段落样式
-        summary_style = ParagraphStyle(
-            'SummaryStyle',
-            parent=styles['Normal'],
-            fontSize=11,
-            leading=14,
-            spaceAfter=6,
-            textColor=colors.darkblue
-        )
-        
-        # 添加标题和时间戳
-        elements.append(Paragraph("Algorithm Comparison Results", title_style))
-        elements.append(Paragraph(f"Export Time: {timestamp}", normal_style))
-        elements.append(Spacer(1, 0.2 * inch))
-        
-        # 如果有AI总结，添加到PDF
-        if ai_summary:
-            elements.append(Paragraph("AI Analysis Summary", subtitle_style))
+        """导出为PDF格式"""
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
             
-            # 创建摘要的背景框
-            summary_frame_style = TableStyle([
-                ('BOX', (0, 0), (-1, -1), 1, colors.grey),
-                ('BACKGROUND', (0, 0), (-1, -1), colors.lightcyan),
-                ('LEFTPADDING', (0, 0), (-1, -1), 12),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-                ('TOPPADDING', (0, 0), (-1, -1), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-            ])
+            # 创建PDF文档对象
+            doc = SimpleDocTemplate(file_path, pagesize=letter)
             
-            # 将总结文本拆分为段落
-            paragraphs = []
-            for paragraph in ai_summary.split('\n\n'):
-                if paragraph.strip():
-                    paragraphs.append(Paragraph(paragraph, summary_style))
-                    paragraphs.append(Spacer(1, 0.1 * inch))
+            # 创建样式表
+            styles = getSampleStyleSheet()
+            title_style = styles['Heading1']
+            subtitle_style = styles['Heading2']
+            normal_style = styles['Normal']
             
-            # 创建一个只有一个单元格的表格，包含总结文本
-            if paragraphs:
-                summary_table = Table([[paragraphs]], colWidths=[6.5*inch])
-                summary_table.setStyle(summary_frame_style)
-                elements.append(summary_table)
-            
-            elements.append(Spacer(1, 0.3 * inch))
-        
-        # 添加参数设置
-        elements.append(Paragraph("Parameter Settings", subtitle_style))
-        
-        # 主算法参数
-        elements.append(Paragraph("Main Algorithm Parameters:", styles['Heading4']))
-        param_data = [
-            ["Parameter", "Value", "Description"],
-            ["m", str(m), "Total Samples"],
-            ["n", str(n), "Selected Samples"],
-            ["k", str(k), "Combination Size"],
-            ["j", str(j), "Subset Parameter"],
-            ["s", str(s), "Coverage Parameter"],
-            ["f", str(f), "Coverage Times"]
-        ]
-        
-        param_table = Table(param_data, colWidths=[1.5*inch, 1*inch, 3*inch])
-        param_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('ALIGN', (1, 1), (1, -1), 'CENTER')
-        ]))
-        elements.append(param_table)
-        elements.append(Spacer(1, 0.2 * inch))
-        
-        # 验证参数
-        iterations = self.validate_iterations.value() if hasattr(self, 'validate_iterations') else "N/A"
-        validation_enabled = "Yes" if self.validate_checkbox.isChecked() else "No" if hasattr(self, 'validate_checkbox') else "N/A"
-        
-        elements.append(Paragraph("Validation Parameters:", styles['Heading4']))
-        validation_data = [
-            ["Parameter", "Value", "Description"],
-            ["Confidence Validation", validation_enabled, "Whether confidence calculation is enabled"],
-            ["Iterations", str(iterations), "Number of iterations for confidence calculation"],
-        ]
-        
-        validation_table = Table(validation_data, colWidths=[1.5*inch, 1*inch, 3*inch])
-        validation_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('ALIGN', (1, 1), (1, -1), 'CENTER')
-        ]))
-        elements.append(validation_table)
-        elements.append(Spacer(1, 0.2 * inch))
-        
-        # 添加验证方法说明
-        if has_confidence:
-            elements.append(Paragraph("Validation Method:", styles['Heading4']))
-            validation_explanation = (
-                "The confidence values are calculated by running multiple validation iterations "
-                f"({iterations} times) to verify the stability and reliability of the solutions generated by each algorithm. "
-                "For each iteration, the algorithm's solutions are tested against random test cases to measure their "
-                "coverage and effectiveness. Higher confidence values indicate more robust and reliable solutions."
+            # 自定义段落样式
+            summary_style = ParagraphStyle(
+                'SummaryStyle',
+                parent=styles['Normal'],
+                fontSize=11,
+                leading=14,
+                spaceAfter=6,
+                textColor=colors.darkblue
             )
-            elements.append(Paragraph(validation_explanation, normal_style))
-            elements.append(Spacer(1, 0.3 * inch))
-        
-        # 添加样本集
-        elements.append(Paragraph("Sample Set", subtitle_style))
-        elements.append(Paragraph(', '.join(self.comp_samples), normal_style))
-        elements.append(Spacer(1, 0.2 * inch))
-        
-        # 添加比较结果表格
-        elements.append(Paragraph("Comparison Results", subtitle_style))
-        
-        # 表头
-        header = ["Algorithm", "Execution Time", "# Combinations"]
-        if has_confidence:
-            header.extend(["Confidence", "Rel. Confidence"])
-        
-        # 准备表格数据
-        table_data = [header]
-        
-        # 获取所有行的数据
-        for row in range(self.results_table.rowCount()):
-            row_data = []
-            row_data.append(self.results_table.item(row, 0).text())
-            row_data.append(self.results_table.item(row, 1).text())
-            row_data.append(self.results_table.item(row, 2).text())
-            if has_confidence:
-                row_data.append(self.results_table.item(row, 3).text())
-                row_data.append(self.results_table.item(row, 4).text())
-            table_data.append(row_data)
-        
-        # 创建并格式化表格
-        col_widths = [1.5*inch, 1.3*inch, 1.3*inch]
-        if has_confidence:
-            col_widths.extend([1*inch, 1.2*inch])
-        
-        results_table = Table(table_data, colWidths=col_widths)
-        
-        table_style = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('ALIGN', (1, 1), (-1, -1), 'CENTER')
-        ]
-        
-        # 根据算法名称设置不同行的背景色
-        for i in range(1, len(table_data)):
-            if "Genetic" in table_data[i][0]:
-                table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightgreen))
-            elif "Simulated" in table_data[i][0]:
-                table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightblue))
-            else:
-                table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightcoral))
-        
-        results_table.setStyle(TableStyle(table_style))
-        elements.append(results_table)
-        elements.append(Spacer(1, 0.3 * inch))
-        
-        # 添加算法描述
-        elements.append(Paragraph("Algorithm Description", subtitle_style))
-        
-        algorithms_info = [
-            {
-                "name": "Genetic Algorithm",
-                "description": "A method for solving optimization problems based on natural selection. The algorithm creates a population of potential solutions and improves them through mutation, crossover, and selection operations across multiple generations.",
-                "color": colors.lightgreen
-            },
-            {
-                "name": "Simulated Annealing",
-                "description": "An optimization technique inspired by annealing in metallurgy. It starts with a high 'temperature' allowing exploration of the solution space, then gradually 'cools down' to refine the solution and avoid local optima.",
-                "color": colors.lightblue
-            },
-            {
-                "name": "Greedy Algorithm",
-                "description": "A simple approach that makes locally optimal choices at each step with the hope of finding a global optimum. It builds a solution incrementally, choosing the next element that offers the most immediate benefit.",
-                "color": colors.lightcoral
-            }
-        ]
-        
-        for algo_info in algorithms_info:
-            # 创建算法描述的背景框
-            algo_name = algo_info["name"]
-            algo_desc = algo_info["description"]
-            algo_color = algo_info["color"]
             
-            # 使用表格创建带颜色的标题
-            header_data = [[Paragraph(algo_name, styles['Heading4'])]]
-            header_table = Table(header_data, colWidths=[6.5*inch])
-            header_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), algo_color),
-                ('LEFTPADDING', (0, 0), (-1, -1), 12),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+            # 添加标题和时间戳
+            elements = [
+                Paragraph("Algorithm Comparison Results", title_style),
+                Paragraph(f"Export Time: {timestamp}", normal_style),
+                Spacer(1, 0.2 * inch)
+            ]
+            
+            # 如果有AI总结，添加到PDF
+            if ai_summary:
+                elements.append(Paragraph("AI Analysis Summary", subtitle_style))
+                
+                # 创建摘要的背景框
+                summary_frame_style = TableStyle([
+                    ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.lightcyan),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 12),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+                    ('TOPPADDING', (0, 0), (-1, -1), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                ])
+                
+                # 将总结文本拆分为段落
+                paragraphs = []
+                for paragraph in ai_summary.split('\n\n'):
+                    if paragraph.strip():
+                        paragraphs.append(Paragraph(paragraph, summary_style))
+                        paragraphs.append(Spacer(1, 0.1 * inch))
+                
+                # 创建一个只有一个单元格的表格，包含总结文本
+                if paragraphs:
+                    summary_table = Table([[paragraphs]], colWidths=[6.5*inch])
+                    summary_table.setStyle(summary_frame_style)
+                    elements.append(summary_table)
+                
+                elements.append(Spacer(1, 0.3 * inch))
+            
+            # 添加参数设置
+            elements.append(Paragraph("Parameter Settings", subtitle_style))
+            
+            # 主算法参数
+            elements.append(Paragraph("Main Algorithm Parameters:", styles['Heading4']))
+            param_data = [
+                ["Parameter", "Value", "Description"],
+                ["m", str(m), "Total Samples"],
+                ["n", str(n), "Selected Samples"],
+                ["k", str(k), "Combination Size"],
+                ["j", str(j), "Subset Parameter"],
+                ["s", str(s), "Coverage Parameter"],
+                ["f", str(f), "Coverage Times"]
+            ]
+            
+            param_table = Table(param_data, colWidths=[1.5*inch, 1*inch, 3*inch])
+            param_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('ALIGN', (1, 1), (1, -1), 'CENTER')
             ]))
-            elements.append(header_table)
-            
-            desc_data = [[Paragraph(algo_desc, normal_style)]]
-            desc_table = Table(desc_data, colWidths=[6.5*inch])
-            desc_table.setStyle(TableStyle([
-                ('LEFTPADDING', (0, 0), (-1, -1), 12),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-                ('TOPPADDING', (0, 0), (-1, -1), 8),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ('BOX', (0, 0), (-1, -1), 1, colors.grey),
-            ]))
-            elements.append(desc_table)
-            elements.append(Spacer(1, 0.1 * inch))
-        
-        elements.append(Spacer(1, 0.2 * inch))
-        
-        # 添加详细组合结果
-        elements.append(Paragraph("Detailed Combinations", subtitle_style))
-        
-        # 为每个算法添加详细组合
-        for row in range(self.results_table.rowCount()):
-            alg_name = self.results_table.item(row, 0).text()
-            combinations = self.results_table.item(row, 5).text()
-            
-            elements.append(Paragraph(alg_name, styles['Heading3']))
-            
-            # 分割组合文本并格式化
-            combo_lines = combinations.split('\n')
-            for line in combo_lines:
-                elements.append(Paragraph(line, normal_style))
-            
+            elements.append(param_table)
             elements.append(Spacer(1, 0.2 * inch))
-        
-        # 生成PDF文档
-        doc.build(elements)
-    
-    def _export_to_text(self, file_path, m, n, k, j, s, f, timestamp, has_confidence):
-        """导出为文本格式"""
-        with open(file_path, 'w', encoding='utf-8') as file:
-            file.write(f"===== Algorithm Comparison Results =====\n")
-            file.write(f"Export Time: {timestamp}\n\n")
             
-            file.write("Parameter Settings:\n")
-            file.write(f"  m = {m} (Total Samples)\n")
-            file.write(f"  n = {n} (Selected Samples)\n")
-            file.write(f"  k = {k} (Combination Size)\n")
-            file.write(f"  j = {j} (Subset Parameter)\n")
-            file.write(f"  s = {s} (Coverage Parameter)\n")
-            file.write(f"  f = {f} (Coverage Times)\n\n")
+            # 验证参数
+            iterations = self.validate_iterations.value() if hasattr(self, 'validate_iterations') else "N/A"
+            validation_enabled = "Yes" if self.validate_checkbox.isChecked() else "No" if hasattr(self, 'validate_checkbox') else "N/A"
             
-            file.write(f"Sample Set: {', '.join(self.comp_samples)}\n\n")
+            elements.append(Paragraph("Validation Parameters:", styles['Heading4']))
+            validation_data = [
+                ["Parameter", "Value", "Description"],
+                ["Confidence Validation", validation_enabled, "Whether confidence calculation is enabled"],
+                ["Iterations", str(iterations), "Number of iterations for confidence calculation"],
+            ]
             
-            # 表格标题
-            file.write(f"{'Algorithm':<20} {'Execution Time':<15} {'# Combinations':<15}")
+            validation_table = Table(validation_data, colWidths=[1.5*inch, 1*inch, 3*inch])
+            validation_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('ALIGN', (1, 1), (1, -1), 'CENTER')
+            ]))
+            elements.append(validation_table)
+            elements.append(Spacer(1, 0.2 * inch))
+            
+            # 添加验证方法说明
             if has_confidence:
-                file.write(f" {'Confidence':<12} {'Rel. Confidence':<15}")
-            file.write("\n")
-            file.write("-" * (50 + (30 if has_confidence else 0)) + "\n")
+                elements.append(Paragraph("Validation Method:", styles['Heading4']))
+                validation_explanation = (
+                    "The confidence values are calculated by running multiple validation iterations "
+                    f"({iterations} times) to verify the stability and reliability of the solutions generated by each algorithm. "
+                    "For each iteration, the algorithm's solutions are tested against random test cases to measure their "
+                    "coverage and effectiveness. Higher confidence values indicate more robust and reliable solutions."
+                )
+                elements.append(Paragraph(validation_explanation, normal_style))
+                elements.append(Spacer(1, 0.3 * inch))
+            
+            # 添加样本集
+            elements.append(Paragraph("Sample Set", subtitle_style))
+            elements.append(Paragraph(', '.join(self.comp_samples), normal_style))
+            elements.append(Spacer(1, 0.2 * inch))
+            
+            # 添加比较结果表格
+            elements.append(Paragraph("Comparison Results", subtitle_style))
+            
+            # 表头
+            header = ["Algorithm", "Execution Time", "# Combinations"]
+            if has_confidence:
+                header.extend(["Confidence", "Rel. Confidence"])
+            
+            # 准备表格数据
+            table_data = [header]
             
             # 获取所有行的数据
             for row in range(self.results_table.rowCount()):
-                alg_name = self.results_table.item(row, 0).text()
-                exec_time = self.results_table.item(row, 1).text()
-                comb_count = self.results_table.item(row, 2).text()
-                confidence = self.results_table.item(row, 3).text()
-                rel_confidence = self.results_table.item(row, 4).text()
-                
-                file.write(f"{alg_name:<20} {exec_time:<15} {comb_count:<15}")
+                row_data = []
+                row_data.append(self.results_table.item(row, 0).text())
+                row_data.append(self.results_table.item(row, 1).text())
+                row_data.append(self.results_table.item(row, 2).text())
                 if has_confidence:
-                    file.write(f" {confidence:<12} {rel_confidence:<15}")
-                file.write("\n")
+                    row_data.append(self.results_table.item(row, 3).text())
+                    row_data.append(self.results_table.item(row, 4).text())
+                table_data.append(row_data)
             
-            file.write("\n\nDetailed Combinations:\n")
-            file.write("=" * 40 + "\n\n")
+            # 创建并格式化表格
+            col_widths = [1.5*inch, 1.3*inch, 1.3*inch]
+            if has_confidence:
+                col_widths.extend([1*inch, 1.2*inch])
             
-            # 输出每个算法的详细组合
+            results_table = Table(table_data, colWidths=col_widths)
+            
+            table_style = [
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('ALIGN', (1, 1), (-1, -1), 'CENTER')
+            ]
+            
+            # 根据算法名称设置不同行的背景色
+            for i in range(1, len(table_data)):
+                if "Genetic" in table_data[i][0]:
+                    table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightgreen))
+                elif "Simulated" in table_data[i][0]:
+                    table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightblue))
+                else:
+                    table_style.append(('BACKGROUND', (0, i), (0, i), colors.lightcoral))
+            
+            results_table.setStyle(TableStyle(table_style))
+            elements.append(results_table)
+            elements.append(Spacer(1, 0.3 * inch))
+            
+            # 添加算法描述
+            elements.append(Paragraph("Algorithm Description", subtitle_style))
+            
+            algorithms_info = [
+                {
+                    "name": "Genetic Algorithm",
+                    "description": "A method for solving optimization problems based on natural selection. The algorithm creates a population of potential solutions and improves them through mutation, crossover, and selection operations across multiple generations.",
+                    "color": colors.lightgreen
+                },
+                {
+                    "name": "Simulated Annealing",
+                    "description": "An optimization technique inspired by annealing in metallurgy. It starts with a high 'temperature' allowing exploration of the solution space, then gradually 'cools down' to refine the solution and avoid local optima.",
+                    "color": colors.lightblue
+                },
+                {
+                    "name": "Greedy Algorithm",
+                    "description": "A simple approach that makes locally optimal choices at each step with the hope of finding a global optimum. It builds a solution incrementally, choosing the next element that offers the most immediate benefit.",
+                    "color": colors.lightcoral
+                }
+            ]
+            
+            for algo_info in algorithms_info:
+                # 创建算法描述的背景框
+                algo_name = algo_info["name"]
+                algo_desc = algo_info["description"]
+                algo_color = algo_info["color"]
+                
+                # 使用表格创建带颜色的标题
+                header_data = [[Paragraph(algo_name, styles['Heading4'])]]
+                header_table = Table(header_data, colWidths=[6.5*inch])
+                header_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), algo_color),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 12),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+                ]))
+                elements.append(header_table)
+                
+                desc_data = [[Paragraph(algo_desc, normal_style)]]
+                desc_table = Table(desc_data, colWidths=[6.5*inch])
+                desc_table.setStyle(TableStyle([
+                    ('LEFTPADDING', (0, 0), (-1, -1), 12),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+                ]))
+                elements.append(desc_table)
+                elements.append(Spacer(1, 0.1 * inch))
+            
+            elements.append(Spacer(1, 0.2 * inch))
+            
+            # 添加详细组合结果
+            elements.append(Paragraph("Detailed Combinations", subtitle_style))
+            
+            # 为每个算法添加详细组合
             for row in range(self.results_table.rowCount()):
                 alg_name = self.results_table.item(row, 0).text()
                 combinations = self.results_table.item(row, 5).text()
                 
-                file.write(f"{alg_name}:\n")
-                file.write("-" * 40 + "\n")
-                file.write(f"{combinations}\n\n")
+                elements.append(Paragraph(alg_name, styles['Heading3']))
+                
+                # 分割组合文本并格式化
+                combo_lines = combinations.split('\n')
+                for line in combo_lines:
+                    elements.append(Paragraph(line, normal_style))
+                
+                elements.append(Spacer(1, 0.2 * inch))
+            
+            # 生成PDF文档
+            doc.build(elements)
+            
+            QMessageBox.information(self, "导出成功", f"结果已成功导出到PDF文件:\n{file_path}")
+        except ImportError:
+            QMessageBox.critical(self, "导出错误", "缺少必要的PDF导出模块(reportlab)，请确保已正确安装。")
+            print("PDF导出错误: 缺少reportlab模块")
+        except Exception as e:
+            QMessageBox.critical(self, "导出错误", f"导出PDF时发生错误:\n{str(e)}")
+            print(f"PDF导出错误: {str(e)}")
+    
+    def _export_to_text(self, file_path, m, n, k, j, s, f, timestamp, has_confidence):
+        """导出为文本格式"""
+        try:
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write(f"===== Algorithm Comparison Results =====\n")
+                file.write(f"Export Time: {timestamp}\n\n")
+                
+                file.write("Parameter Settings:\n")
+                file.write(f"  m = {m} (Total Samples)\n")
+                file.write(f"  n = {n} (Selected Samples)\n")
+                file.write(f"  k = {k} (Combination Size)\n")
+                file.write(f"  j = {j} (Subset Parameter)\n")
+                file.write(f"  s = {s} (Coverage Parameter)\n")
+                file.write(f"  f = {f} (Coverage Times)\n\n")
+                
+                file.write(f"Sample Set: {', '.join(self.comp_samples)}\n\n")
+                
+                # 表格标题
+                file.write(f"{'Algorithm':<20} {'Execution Time':<15} {'# Combinations':<15}")
+                if has_confidence:
+                    file.write(f" {'Confidence':<12} {'Rel. Confidence':<15}")
+                file.write("\n")
+                file.write("-" * (50 + (30 if has_confidence else 0)) + "\n")
+                
+                # 获取所有行的数据
+                for row in range(self.results_table.rowCount()):
+                    alg_name = self.results_table.item(row, 0).text()
+                    exec_time = self.results_table.item(row, 1).text()
+                    comb_count = self.results_table.item(row, 2).text()
+                    confidence = self.results_table.item(row, 3).text() if self.results_table.item(row, 3) else "N/A"
+                    rel_confidence = self.results_table.item(row, 4).text() if self.results_table.item(row, 4) else "N/A"
+                    
+                    file.write(f"{alg_name:<20} {exec_time:<15} {comb_count:<15}")
+                    if has_confidence:
+                        file.write(f" {confidence:<12} {rel_confidence:<15}")
+                    file.write("\n")
+                
+                file.write("\n\nDetailed Combinations:\n")
+                file.write("=" * 40 + "\n\n")
+                
+                # 输出每个算法的详细组合
+                for row in range(self.results_table.rowCount()):
+                    alg_name = self.results_table.item(row, 0).text()
+                    combinations = self.results_table.item(row, 5).text() if self.results_table.item(row, 5) else ""
+                    
+                    file.write(f"{alg_name}:\n")
+                    file.write("-" * 40 + "\n")
+                    file.write(f"{combinations}\n\n")
+                    
+            QMessageBox.information(self, "导出成功", f"结果已成功导出到文本文件:\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "导出错误", f"导出文件时发生错误:\n{str(e)}")
+            print(f"导出文本文件错误: {str(e)}")
     
 # 添加验证线程类
 class ValidationThread(QThread):
     """用于在后台执行算法结果验证的线程"""
     validation_complete = pyqtSignal(dict)
     progress_update = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)  # 添加错误信号
     
     def __init__(self, samples, algorithm_results, j, s, k, f, iterations=30):
         super().__init__()
@@ -2728,7 +2749,11 @@ class ValidationThread(QThread):
             # 准备算法结果字典
             solutions_dict = {alg_name: data['results'] for alg_name, data in self.algorithm_results.items()}
             
-            # 创建验证器
+            # 创建验证器 - 禁用进度条
+            # 修改tqdm导入，避免文件写入问题
+            import tqdm
+            tqdm.tqdm = lambda *args, **kwargs: args[0]  # 完全禁用tqdm进度条
+            
             validator = SolutionValidator(self.samples, self.j, self.s, self.k, self.f)
             
             # 进行验证
@@ -2742,5 +2767,16 @@ class ValidationThread(QThread):
             self.validation_complete.emit(validation_results)
             
         except Exception as e:
-            self.progress_update.emit(f"验证过程出错: {str(e)}")
+            import traceback
+            error_msg = f"验证过程出错: {str(e)}"
+            stack_trace = traceback.format_exc()
+            print(f"{error_msg}\n{stack_trace}")
+            self.progress_update.emit(error_msg)
+            self.error_occurred.emit(error_msg)  # 发送错误信号
+            
+            # 发送空的验证结果以避免UI阻塞
+            empty_results = {alg_name: {"valid": True, "confidence": 0.0, "relative_confidence": 0.0, 
+                                       "error": str(e)} 
+                            for alg_name in self.algorithm_results.keys()}
+            self.validation_complete.emit(empty_results)
     

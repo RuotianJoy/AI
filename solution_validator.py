@@ -1,19 +1,17 @@
 import numpy as np
 import itertools
-from tqdm import tqdm
+# 修改tqdm导入，创建无操作版本
+from tqdm import tqdm as original_tqdm
+# 创建禁用的tqdm函数
+def disabled_tqdm(iterable, *args, **kwargs):
+    return iterable
+# 替换全局tqdm
+tqdm = disabled_tqdm
 import time
 import math
 import random
 from scipy import stats
 from functools import lru_cache
-import logging
-
-# 配置日志
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    filename='validator.log',
-                    filemode='a')
-logger = logging.getLogger('SolutionValidator')
 
 class SolutionValidator:
     """
@@ -35,13 +33,9 @@ class SolutionValidator:
         self.f = f
         self.n = len(samples)
         
-        # 调试信息
-        logger.info(f"初始化验证器: j={j}, s={s}, k={k}, f={f}, 样本数={len(samples)}")
-        
         # 预计算所有可能的s组合
         self.all_s_combinations = list(itertools.combinations(samples, s))
         self.total_s_combinations = len(self.all_s_combinations)
-        logger.info(f"总共 {self.total_s_combinations} 个s组合需要覆盖")
         
         # 缓存配置
         self._evaluation_cache = {}
@@ -68,7 +62,6 @@ class SolutionValidator:
         返回: (是否有效, 置信度, 详细信息)
         """
         if not solution:
-            logger.warning("验证空解决方案")
             return False, 0.0, {"error": "Empty solution"}
         
         # 查找缓存结果
@@ -80,7 +73,6 @@ class SolutionValidator:
         size_check = all(len(group) == self.k for group in solution)
         if not size_check:
             invalid_groups = [i for i, group in enumerate(solution) if len(group) != self.k]
-            logger.warning(f"组合大小检查失败: {invalid_groups}")
             result = (False, 0.0, {"error": f"Some combinations don't have size k: {invalid_groups}"})
             self._evaluation_cache[solution_key] = result
             return result
@@ -89,7 +81,6 @@ class SolutionValidator:
         valid_samples = all(sample in self.samples for group in solution for sample in group)
         if not valid_samples:
             invalid_samples = [sample for group in solution for sample in group if sample not in self.samples]
-            logger.warning(f"无效样本: {invalid_samples}")
             result = (False, 0.0, {"error": f"Solution contains invalid samples: {invalid_samples}"})
             self._evaluation_cache[solution_key] = result
             return result
@@ -101,9 +92,6 @@ class SolutionValidator:
         uncovered_combinations = [comb for comb, count in s_coverage.items() if count < self.f]
         coverage_satisfied = len(uncovered_combinations) == 0
         coverage_ratio = sum(1 for count in s_coverage.values() if count >= self.f) / max(1, self.total_s_combinations)
-        
-        if not coverage_satisfied:
-            logger.warning(f"覆盖约束不满足: {len(uncovered_combinations)}/{self.total_s_combinations} 组合未满足")
         
         # 检查整体有效性
         is_valid = size_check and valid_samples and coverage_satisfied
@@ -122,11 +110,9 @@ class SolutionValidator:
                 
             # 确保置信度不完全为零，除非解决方案无效
             if is_valid and confidence < self.min_confidence_threshold:
-                logger.warning(f"有效解决方案的置信度过低 ({confidence:.6f})，强制设置最小阈值")
                 confidence = max(confidence, self.min_confidence_threshold)
             
         except Exception as e:
-            logger.error(f"计算置信度时出错: {e}", exc_info=True)
             # 出错时提供一个基础置信度
             confidence = 0.1 if is_valid else 0.0
             metrics = {"error": str(e)}
@@ -150,7 +136,8 @@ class SolutionValidator:
         return result
     
     def _debug_low_confidence(self, solution, s_coverage, coverage_ratio, metrics):
-        """收集和记录低置信度情况的调试信息"""
+        """收集低置信度情况的调试信息"""
+        # 不记录日志，只收集调试信息
         debug_info = {
             "solution_size": len(solution),
             "coverage_ratio": coverage_ratio,
@@ -159,7 +146,7 @@ class SolutionValidator:
             "avg_coverage": sum(s_coverage.values()) / len(s_coverage) if s_coverage else 0,
             "metrics": metrics
         }
-        logger.warning(f"检测到低置信度情况: {debug_info}")
+        # 调试信息已收集，但不记录日志
         
     def _get_solution_hash(self, solution):
         """生成解决方案的唯一哈希值，用于缓存"""
@@ -229,11 +216,6 @@ class SolutionValidator:
             # 确保最终分数在[0,1]范围内
             final_score = max(0.01, min(1.0, ensemble_score))  # 保证至少0.01
             
-            # 记录调试信息
-            if final_score < 0.1:
-                logger.info(f"低集成评分: basic={basic_score:.4f}, stat={statistical_score:.4f}, entropy={entropy_score:.4f}, "
-                           f"bayes={bayesian_score:.4f}, optim={optimization_score:.4f}, minmax={minmax_score:.4f}")
-            
             # 添加所有评分到指标字典
             metrics["ensemble_score"] = ensemble_score
             metrics["final_score"] = final_score
@@ -241,7 +223,6 @@ class SolutionValidator:
             return final_score, metrics
             
         except Exception as e:
-            logger.error(f"高级置信度计算错误: {e}", exc_info=True)
             # 发生错误时回退到基础评分
             basic_score = self.calculate_basic_score(solution, s_coverage, coverage_ratio)
             return max(0.01, basic_score), {"basic_score": basic_score, "error": str(e)}
@@ -283,15 +264,10 @@ class SolutionValidator:
             # 加权计算最终置信度
             score = (0.6 * coverage_score) + (0.2 * redundancy_score) + (0.2 * efficiency_score)
             
-            # 记录调试信息
-            if score < 0.1:
-                logger.info(f"低基础评分: 覆盖率={coverage_score:.4f}, 冗余度={redundancy_score:.4f}, 效率={efficiency_score:.4f}")
-            
             # 确保置信度在0-1范围内，且有效解至少有最小置信度
             return max(0.01, min(1, score))
             
         except Exception as e:
-            logger.error(f"基础评分计算错误: {e}", exc_info=True)
             # 出错时返回一个最小置信度
             return 0.01
     
@@ -522,7 +498,6 @@ class SolutionValidator:
         
         # 如果解决方案无效，返回较低但非零的置信度
         if not is_valid:
-            logger.warning("蒙特卡洛验证: 解决方案无效")
             return 0.05, {"warning": "Invalid solution", "details": curr_details}
         
         # 生成随机解决方案进行比较
@@ -550,18 +525,15 @@ class SolutionValidator:
                     
                     if 'metrics' in rand_details:
                         random_metrics.append(rand_details['metrics'])
-            except Exception as e:
-                logger.error(f"蒙特卡洛验证中出错: {e}", exc_info=True)
+            except Exception:
                 continue
         
         # 计算蒙特卡洛置信度 (当前解在随机解中的百分位数)
         if not random_confidences:
             monte_carlo_confidence = 1.0
-            logger.warning("没有有效的随机解进行比较")
         else:
             # 当前解决方案优于多少百分比的随机解决方案
             monte_carlo_confidence = sum(1 for rc in random_confidences if curr_confidence > rc) / len(random_confidences)
-            logger.info(f"蒙特卡洛置信度: {monte_carlo_confidence:.4f} (基于{len(random_confidences)}个有效随机解)")
         
         # 计算当前解决方案相对于随机解决方案的各项指标优势
         metric_advantages = {}
@@ -764,7 +736,6 @@ class SolutionValidator:
             return benchmark_result
             
         except Exception as e:
-            logger.error(f"基准测试出错: {e}", exc_info=True)
             # 出错时返回简化的结果
             return {
                 "valid": True,
@@ -811,13 +782,7 @@ class SolutionValidator:
                     "advanced_metrics": benchmark.get("advanced_metrics", {})
                 }
                 
-                # 记录每个算法的评估结果
-                logger.info(f"算法'{alg_name}'评估完成: 有效={benchmark['valid']}, "
-                           f"置信度={benchmark.get('confidence', 0):.4f}, "
-                           f"组合数={benchmark.get('combinations_count', 0)}")
-                
             except Exception as e:
-                logger.error(f"评估算法'{alg_name}'时出错: {e}", exc_info=True)
                 # 出错时提供默认结果
                 results[alg_name] = {
                     "valid": False,
@@ -830,8 +795,6 @@ class SolutionValidator:
             # 找出最高置信度
             valid_results = [r for r in results.values() if r["valid"]]
             max_confidence = max(r["confidence"] for r in valid_results) if valid_results else 0.01
-            
-            logger.info(f"比较完成: 最高置信度={max_confidence:.4f}")
             
             # 更新相对置信度
             for alg_name in results:
