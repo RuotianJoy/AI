@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 compareResults[algorithm] = {
                     combinations: result.result,
                     metrics: result.metrics,
-                    executionTime: result.message.match(/(\d+\.\d+) seconds/)?.[1] || '0'
+                    executionTime: result.executionTime || '0'
                 };
                 
                 // Update the display

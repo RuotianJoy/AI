@@ -202,6 +202,7 @@ def compare_calculate():
             'success': True,
             'result': solution,
             'metrics': metrics,
+            'executionTime': round(execution_time, 2),  # 添加执行时间字段
             'message': f'计算完成，用时 {execution_time:.2f} 秒'
         }
 
