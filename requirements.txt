@@ -5,3 +5,11 @@ tqdm
 scipy
 reportlab
 flask
+Flask
+Werkzeug
+Jinja2
+itsdangerous
+click
+deap
+numpy
+pulp
