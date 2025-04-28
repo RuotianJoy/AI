@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Calculation History</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        .history-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .record-panel, .details-panel {
+            flex: 1;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            position: relative;
+        }
+        .panel-title {
+            text-align: center;
+            margin-top: -32px;
+            background: #f5f5f5;
+            padding: 0 10px;
+            display: inline-block;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .record-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .record-item {
+            padding: 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            text-align: center;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+        }
+        .record-checkbox {
+            margin-right: 10px;
+        }
+        .record-id {
+            flex-grow: 1;
+        }
+        .record-item:hover {
+            background-color: #f0f7ff;
+        }
+        .record-item.selected {
+            background-color: #2196f3;
+            color: white;
+        }
+        .record-item.selected .record-checkbox {
+            accent-color: white;
+        }
+        .details-content {
+            min-height: 300px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            overflow-y: auto;
+        }
+        .action-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .select-message {
+            background-color: #f5f5f5;
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+        }
+        .btn-primary {
+            background-color: #2196f3;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .param-table {
+            width: 100%;
+            margin: 15px 0;
+        }
+        .param-table td {
+            padding: 5px;
+            text-align: right;
+        }
+        .param-table td:first-child {
+            text-align: right;
+            width: 70%;
+        }
+        .param-table td:last-child {
+            text-align: left;
+            font-weight: bold;
+            width: 30%;
+        }
+        .result-id {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .result-time {
+            text-align: center;
+            margin-bottom: 5px;
+            color: #666;
+        }
+        .section-title {
+            font-weight: bold;
+            margin: 15px 0 10px 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        .sample-set {
+            margin: 10px 0;
+            line-height: 1.5;
+        }
+        .batch-controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .batch-delete-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .batch-delete-btn:disabled {
+            background-color: #e9a0a8;
+            cursor: not-allowed;
+        }
+        .select-all-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Calculation History</h1>
+        <div class="history-container">
+            <div class="record-panel">
+                <div class="panel-title">Saved Run Records</div>
+                <div class="select-message">Select a Record to View Details</div>
+                
+                <div class="batch-controls">
+                    <div class="select-all-container">
+                        <input type="checkbox" id="selectAll">
+                        <label for="selectAll">Select All</label>
+                    </div>
+                    <button id="batchDeleteBtn" class="batch-delete-btn" disabled>Batch Delete</button>
+                </div>
+                
+                <div class="record-list" id="recordList"></div>
+            </div>
+            <div class="details-panel">
+                <div class="panel-title">Result Details</div>
+                <div class="details-content" id="detailsContent"></div>
+                <div class="action-buttons">
+                    <button id="deleteBtn" class="btn btn-danger" disabled>Delete Selected Record</button>
+                    <button id="exportBtn" class="btn btn-primary" disabled>Export as Text File</button>
+                </div>
+            </div>
+        </div>
+        <button class="btn" onclick="window.location.href='/'">Back to Home</button>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const recordList = document.getElementById('recordList');
+        const detailsContent = document.getElementById('detailsContent');
+        const deleteBtn = document.getElementById('deleteBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const selectAllCheckbox = document.getElementById('selectAll');
+        const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+        
+        let records = [];
+        let selectedRecordId = null;
+
+        // Load history records
+        async function loadRecords() {
+            try {
+                const response = await fetch('/api/results');
+                const data = await response.json();
+                
+                records = data.sort((a, b) => {
+                    const timestampA = a.timestamp || '';
+                    const timestampB = b.timestamp || '';
+                    return timestampB.localeCompare(timestampA);
+                });
+                
+                renderRecordList();
+            } catch (error) {
+                console.error('Error loading records:', error);
+                recordList.innerHTML = '<div class="error-message">Failed to load records</div>';
+            }
+        }
+        
+        // Render the record list
+        function renderRecordList() {
+            if (records.length === 0) {
+                recordList.innerHTML = '<div class="empty-message">No records found</div>';
+                return;
+            }
+            
+            recordList.innerHTML = records.map((record, index) => {
+                const timestamp = record.timestamp || 'Unknown';
+                const date = new Date(
+                    timestamp.substring(0, 4),
+                    parseInt(timestamp.substring(4, 6)) - 1,
+                    timestamp.substring(6, 8),
+                    timestamp.substring(9, 11),
+                    timestamp.substring(11, 13),
+                    timestamp.substring(13, 15)
+                );
+                
+                const formattedDate = date.toLocaleString();
+                
+                return `
+                    <div class="record-item" data-id="${timestamp}">
+                        <input type="checkbox" class="record-checkbox" data-id="${timestamp}">
+                        <span class="record-id">${formattedDate}</span>
+                    </div>
+                `;
+            }).join('');
+            
+            // Add click event to records
+            document.querySelectorAll('.record-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    // Don't trigger selection if clicking the checkbox
+                    if (e.target.classList.contains('record-checkbox')) return;
+                    
+                    const recordId = item.dataset.id;
+                    selectRecord(recordId);
+                });
+            });
+            
+            // Add change event to checkboxes
+            document.querySelectorAll('.record-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    updateBatchDeleteButton();
+                });
+            });
+        }
+        
+        // Select a record
+        function selectRecord(recordId) {
+            // Remove selection from all items
+            document.querySelectorAll('.record-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // Add selection to clicked item
+            const selectedItem = document.querySelector(`.record-item[data-id="${recordId}"]`);
+            if (selectedItem) {
+                selectedItem.classList.add('selected');
+            }
+            
+            // Enable delete button
+            deleteBtn.disabled = false;
+            exportBtn.disabled = false;
+            
+            // Store selected ID
+            selectedRecordId = recordId;
+            
+            // Display record details
+            const record = records.find(r => r.timestamp === recordId);
+            if (record) {
+                displayRecordDetails(record);
+            }
+        }
+        
+        // Display record details
+        function displayRecordDetails(record) {
+            const input = record.input || {};
+            const result = record.result || {};
+            
+            const timestamp = record.timestamp || 'Unknown';
+            const date = new Date(
+                timestamp.substring(0, 4),
+                parseInt(timestamp.substring(4, 6)) - 1,
+                timestamp.substring(6, 8),
+                timestamp.substring(9, 11),
+                timestamp.substring(11, 13),
+                timestamp.substring(13, 15)
+            );
+            
+            const formattedDate = date.toLocaleString();
+            
+            let algorithmName = 'Unknown';
+            if (input.algorithm === 'greedy') algorithmName = 'Greedy Algorithm';
+            if (input.algorithm === 'genetic') algorithmName = 'Genetic Algorithm';
+            if (input.algorithm === 'annealing') algorithmName = 'Simulated Annealing';
+            
+            let html = `
+                <div class="result-id">Record ID: ${timestamp}</div>
+                <div class="result-time">Date: ${formattedDate}</div>
+                
+                <div class="section-title">Parameters</div>
+                <table class="param-table">
+                    <tr><td>Algorithm:</td><td>${algorithmName}</td></tr>
+                    <tr><td>Total Samples (m):</td><td>${input.m || '-'}</td></tr>
+                    <tr><td>Selected Samples (n):</td><td>${input.n || '-'}</td></tr>
+                    <tr><td>Combination Size (k):</td><td>${input.k || '-'}</td></tr>
+                    <tr><td>Subset Parameter (j):</td><td>${input.j || '-'}</td></tr>
+                    <tr><td>Coverage Parameter (s):</td><td>${input.s || '-'}</td></tr>
+                    <tr><td>Coverage Times (f):</td><td>${input.f || '-'}</td></tr>
+                </table>
+                
+                <div class="section-title">Input Samples</div>
+                <div class="sample-set">${input.samples ? input.samples.join(', ') : '-'}</div>
+                
+                <div class="section-title">Result</div>
+            `;
+            
+            if (result.success) {
+                const resultGroups = result.result || [];
+                if (resultGroups.length > 0) {
+                    html += `<p>Found ${resultGroups.length} combinations:</p>`;
+                    html += '<ol>';
+                    resultGroups.forEach(group => {
+                        html += `<li>${group.join(', ')}</li>`;
+                    });
+                    html += '</ol>';
+                } else {
+                    html += '<p>No combinations found.</p>';
+                }
+                
+                if (result.message) {
+                    html += `<p class="result-message">${result.message}</p>`;
+                }
+            } else {
+                html += `<p class="error-message">Error: ${result.message || 'Unknown error'}</p>`;
+            }
+            
+            detailsContent.innerHTML = html;
+        }
+        
+        // Delete selected record
+        async function deleteRecord(recordId) {
+            try {
+                const response = await fetch(`/api/results/${recordId}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Remove record from list
+                    records = records.filter(r => r.timestamp !== recordId);
+                    renderRecordList();
+                    
+                    // Clear details
+                    detailsContent.innerHTML = '';
+                    deleteBtn.disabled = true;
+                    exportBtn.disabled = true;
+                    selectedRecordId = null;
+                    
+                    alert('Record deleted successfully');
+                } else {
+                    alert(`Error deleting record: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error deleting record:', error);
+                alert('Failed to delete record. Please try again.');
+            }
+        }
+        
+        // Export record as text
+        function exportRecord(record) {
+            const input = record.input || {};
+            const result = record.result || {};
+            
+            let text = 'OPTIMAL SAMPLES SELECTION SYSTEM - EXPORT\n';
+            text += '===========================================\n\n';
+            
+            // Record info
+            const timestamp = record.timestamp || 'Unknown';
+            const date = new Date(
+                timestamp.substring(0, 4),
+                parseInt(timestamp.substring(4, 6)) - 1,
+                timestamp.substring(6, 8),
+                timestamp.substring(9, 11),
+                timestamp.substring(11, 13),
+                timestamp.substring(13, 15)
+            );
+            
+            const formattedDate = date.toLocaleString();
+            
+            text += `Record ID: ${timestamp}\n`;
+            text += `Date: ${formattedDate}\n\n`;
+            
+            // Algorithm info
+            let algorithmName = 'Unknown';
+            if (input.algorithm === 'greedy') algorithmName = 'Greedy Algorithm';
+            if (input.algorithm === 'genetic') algorithmName = 'Genetic Algorithm';
+            if (input.algorithm === 'annealing') algorithmName = 'Simulated Annealing';
+            
+            text += 'PARAMETERS\n';
+            text += '-----------\n';
+            text += `Algorithm: ${algorithmName}\n`;
+            text += `Total Samples (m): ${input.m || '-'}\n`;
+            text += `Selected Samples (n): ${input.n || '-'}\n`;
+            text += `Combination Size (k): ${input.k || '-'}\n`;
+            text += `Subset Parameter (j): ${input.j || '-'}\n`;
+            text += `Coverage Parameter (s): ${input.s || '-'}\n`;
+            text += `Coverage Times (f): ${input.f || '-'}\n\n`;
+            
+            // Samples
+            text += 'INPUT SAMPLES\n';
+            text += '-------------\n';
+            text += `${input.samples ? input.samples.join(', ') : '-'}\n\n`;
+            
+            // Results
+            text += 'RESULTS\n';
+            text += '-------\n';
+            
+            if (result.success) {
+                const resultGroups = result.result || [];
+                if (resultGroups.length > 0) {
+                    text += `Found ${resultGroups.length} combinations:\n\n`;
+                    resultGroups.forEach((group, index) => {
+                        text += `${index + 1}. ${group.join(', ')}\n`;
+                    });
+                } else {
+                    text += 'No combinations found.\n';
+                }
+                
+                if (result.message) {
+                    text += `\nMessage: ${result.message}\n`;
+                }
+            } else {
+                text += `Error: ${result.message || 'Unknown error'}\n`;
+            }
+            
+            // Create and download file
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `result_${timestamp}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Update the batch delete button based on checkbox selection
+        function updateBatchDeleteButton() {
+            const checkboxes = document.querySelectorAll('.record-checkbox:checked');
+            batchDeleteBtn.disabled = checkboxes.length === 0;
+        }
+        
+        // Batch delete selected records
+        async function batchDelete() {
+            const checkboxes = document.querySelectorAll('.record-checkbox:checked');
+            const selectedIds = Array.from(checkboxes).map(cb => cb.dataset.id);
+            
+            if (!confirm(`Are you sure you want to delete ${selectedIds.length} records?`)) {
+                return;
+            }
+            
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (const id of selectedIds) {
+                try {
+                    const response = await fetch(`/api/results/${id}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                } catch (error) {
+                    console.error(`Error deleting record ${id}:`, error);
+                    failCount++;
+                }
+            }
+            
+            alert(`Deletion complete: ${successCount} records deleted, ${failCount} failed.`);
+            
+            // Reload records
+            await loadRecords();
+            
+            // Clear details if the selected record was deleted
+            if (selectedIds.includes(selectedRecordId)) {
+                detailsContent.innerHTML = '';
+                deleteBtn.disabled = true;
+                exportBtn.disabled = true;
+                selectedRecordId = null;
+            }
+            
+            // Reset batch delete button
+            batchDeleteBtn.disabled = true;
+            selectAllCheckbox.checked = false;
+        }
+        
+        // Event listeners
+        deleteBtn.addEventListener('click', () => {
+            if (selectedRecordId) {
+                if (confirm('Are you sure you want to delete this record?')) {
+                    deleteRecord(selectedRecordId);
+                }
+            }
+        });
+        
+        exportBtn.addEventListener('click', () => {
+            if (selectedRecordId) {
+                const record = records.find(r => r.timestamp === selectedRecordId);
+                if (record) {
+                    exportRecord(record);
+                }
+            }
+        });
+        
+        selectAllCheckbox.addEventListener('change', () => {
+            const checkboxes = document.querySelectorAll('.record-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = selectAllCheckbox.checked;
+            });
+            updateBatchDeleteButton();
+        });
+        
+        batchDeleteBtn.addEventListener('click', batchDelete);
+        
+        // Initialize
+        loadRecords();
+    });
+    </script>
+</body>
+</html>
