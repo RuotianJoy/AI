@@ -1,133 +1,150 @@
 # Optimal Samples Selection System
 
-An intelligent system for selecting optimal sample combinations using genetic algorithms and simulated annealing optimization.
+一个智能样本组合优化系统，使用遗传算法、模拟退火算法和贪心算法进行最佳样本选择。
 
-## Overview
+## 系统概述
 
-This system helps users find the optimal combination of samples that satisfy specific coverage requirements. It provides two optimization algorithms:
-- Genetic Algorithm
-- Simulated Annealing
+该系统帮助用户寻找满足特定覆盖要求的最佳样本组合。它提供了三种优化算法：
+- 遗传算法（Genetic Algorithm）
+- 模拟退火算法（Simulated Annealing）
+- 贪心算法（Greedy Algorithm）
 
-The system features a user-friendly GUI interface and maintains a database of optimization results for future reference.
+系统具有用户友好的GUI界面，并维护优化结果数据库以供参考。
 
-## Features
+## 功能特点
 
-- **Dual Algorithm Support**
-  - Genetic Algorithm optimization
-  - Simulated Annealing optimization
-  - Real-time progress tracking
-  - Detailed result visualization
+- **多算法支持**
+  - 遗传算法优化
+  - 模拟退火算法优化
+  - 贪心算法优化
+  - 实时进度跟踪
+  - 详细结果可视化
+  - 算法对比分析
 
-- **Parameter Configuration**
-  - Total sample number (m): 45-54
-  - Selected sample number (n): 7-25
-  - Combination size (k): 4-7
-  - Subset parameter (j): ≥3
-  - Coverage parameter (s): 3-7
-  - Coverage times (f): ≥1
+- **参数配置**
+  - 总样本数量 (m)：45-54
+  - 选择样本数量 (n)：7-25
+  - 组合大小 (k)：4-7
+  - 子集参数 (j)：≥3
+  - 覆盖参数 (s)：3-7
+  - 覆盖次数 (f)：≥1
 
-- **Sample Selection Methods**
-  - Random selection
-  - Manual input
+- **样本选择方法**
+  - 随机选择
+  - 手动输入
 
-- **Result Management**
-  - Save optimization results to database
-  - View historical optimization records
-  - Export results to text files
-  - Delete unwanted records
+- **结果管理**
+  - 将优化结果保存到数据库
+  - 查看历史优化记录
+  - 导出结果到文本文件或PDF
+  - 删除不需要的记录
 
-## Requirements
+## 系统要求
 
 - Python 3.6+
 - PyQt5
 - SQLite3
+- DEAP（用于遗传算法）
+- NumPy
+- SciPy
+- tqdm
+- reportlab（用于PDF导出，可选）
 
-## Installation
+## 安装
 
-1. Clone the repository:
+1. 克隆仓库：
 ```bash
 git clone [repository-url]
 cd [repository-name]
 ```
 
-2. Install required packages:
+2. 安装所需包：
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+## 使用方法
 
-1. Run the application:
+1. 运行应用程序：
 ```bash
-python main.py
+python main_window.py
 ```
 
-2. Configure parameters:
-   - Set total sample number (m)
-   - Set selected sample number (n)
-   - Set combination size (k)
-   - Set subset parameter (j)
-   - Set coverage parameter (s)
-   - Set coverage times (f)
-   - Choose optimization algorithm
+2. 配置参数：
+   - 设置总样本数量 (m)
+   - 设置选择样本数量 (n)
+   - 设置组合大小 (k)
+   - 设置子集参数 (j)
+   - 设置覆盖参数 (s)
+   - 设置覆盖次数 (f)
+   - 选择优化算法
 
-3. Select samples:
-   - Choose random selection or manual input
-   - If manual input, enter sample numbers separated by commas
+3. 选择样本：
+   - 选择随机生成或手动输入
+   - 若手动输入，请输入以逗号分隔的样本编号
 
-4. Execute optimization:
-   - Click "Execute" button
-   - Monitor progress in real-time
-   - View results in the display area
+4. 执行优化：
+   - 点击"执行"按钮
+   - 实时监控进度
+   - 在显示区域查看结果
 
-5. Manage results:
-   - Save results to database
-   - View historical records
-   - Export results to text files
-   - Delete unwanted records
+5. 管理结果：
+   - 将结果保存到数据库
+   - 查看历史记录
+   - 导出结果到文本文件或PDF
+   - 删除不需要的记录
 
-## Database Structure
+6. 算法对比：
+   - 在对比选项卡中可以同时运行多种算法
+   - 比较不同算法的性能和结果质量
+   - 验证结果是否满足覆盖要求
 
-The system uses SQLite3 database with the following tables:
+## 数据库结构
 
-- **runs**: Stores optimization run information
-  - Parameters (m, n, k, j, s, f)
-  - Timestamp
-  - Execution time
-  - Algorithm used
-  - Run count
-  - Formatted ID
+系统使用SQLite3数据库，包含以下表：
 
-- **samples**: Stores selected samples for each run
-  - Run ID
-  - Sample number
+- **runs**：存储优化运行信息
+  - 参数 (m, n, k, j, s, f)
+  - 时间戳
+  - 执行时间
+  - 使用的算法
+  - 运行计数
+  - 格式化ID
 
-- **results**: Stores optimization results
-  - Run ID
-  - Group ID
-  - Sample number
+- **samples**：存储每次运行的选定样本
+  - 运行ID
+  - 样本编号
 
-## File Structure
+- **results**：存储优化结果
+  - 运行ID
+  - 组ID
+  - 样本编号
+
+## 文件结构
 
 ```
 .
-├── main.py                 # Main application entry point
-├── main_window.py          # GUI implementation
-├── genetic_algorithm.py    # Genetic algorithm implementation
-├── simulated_annealing.py  # Simulated annealing implementation
-├── results.db              # SQLite database
-└── requirements.txt        # Python dependencies
+├── main_window.py          # 主应用程序入口和GUI实现
+├── genetic_algorithm.py    # 遗传算法实现
+├── simulated_annealing.py  # 模拟退火算法实现
+├── greedy_optimizer.py     # 贪心算法实现
+├── solution_validator.py   # 解决方案验证器
+├── results.db              # SQLite数据库
+├── requirements.txt        # Python依赖项
+└── 算法流程.png             # 算法流程图
 ```
 
-## Contributing
+## 算法说明
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+- **遗传算法**：通过模拟自然选择过程，利用交叉、变异等操作进行样本组合的优化。
+- **模拟退火算法**：通过模拟物理退火过程，以一定概率接受差解，避免陷入局部最优解。
+- **贪心算法**：基于覆盖贡献度选择样本组合，每次选择能够增加最大覆盖率的组合。
 
-## License
+## 贡献
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+欢迎贡献！请随时提交Pull Request。
 
-## Contact
+## 联系方式
 
-For any questions or suggestions, please contact the project maintainers. 
+如有任何问题或建议，请联系项目维护者。 
 
