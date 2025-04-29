@@ -136,7 +136,7 @@ class GreedyOptimizer:
         """Convert bitmask to index list"""
         return [i for i in range(size) if (mask & (1 << i))]
 
-    def _greedy_search_bitmask(self, n, y):
+    def _greedy_search_bitmask(self, n, coverage_frequency):
         """Greedy search algorithm using bitmasks"""
         start_time = time.time()
 
@@ -161,7 +161,13 @@ class GreedyOptimizer:
         # Start greedy selection process
         selected_k_masks = []
         selected_k_indices = []
+        
+        # Track coverage count for each j-subset
+        j_coverage_counts = [0] * len(j_masks)
+        
+        # Remaining j indices are those that haven't been covered f times
         remaining_j_indices = set(range(len(j_masks)))
+        
         total_j = len(j_masks)
         processed = 0
         
@@ -169,13 +175,15 @@ class GreedyOptimizer:
             self.progress_callback(35, f"Starting bitmask greedy search, processing {total_j} combinations...")
 
         while remaining_j_indices:
-            # Calculate number of remaining j_masks covered by each k_mask
+            # Calculate number of uncovered j_masks for each k_mask
             coverage_counts = []
             for k_idx, matches in enumerate(match_matrix):
                 if k_idx in selected_k_indices:
                     coverage_counts.append(0)  # Already selected k are not considered
                 else:
-                    count = sum(1 for j_idx in matches if j_idx in remaining_j_indices)
+                    # Count j-subsets that would benefit from this k-subset
+                    # (those that haven't been covered f times yet)
+                    count = sum(1 for j_idx in matches if j_idx in remaining_j_indices and j_coverage_counts[j_idx] < coverage_frequency)
                     coverage_counts.append(count)
             
             if not coverage_counts or max(coverage_counts) == 0:
@@ -188,30 +196,20 @@ class GreedyOptimizer:
             selected_k_indices.append(best_index)
             selected_k_masks.append(k_masks[best_index])
             
-            # Record covered j indices
-            covered_j_indices = [j_idx for j_idx in match_matrix[best_index] if j_idx in remaining_j_indices]
-            removed_count = len(covered_j_indices)
+            # Update coverage counts for j-subsets
+            newly_covered = []
+            for j_idx in match_matrix[best_index]:
+                if j_idx in remaining_j_indices:
+                    j_coverage_counts[j_idx] += 1
+                    
+                    # If this j-subset has now been covered f times, remove it from remaining
+                    if j_coverage_counts[j_idx] >= coverage_frequency:
+                        newly_covered.append(j_idx)
             
-            # Remove covered j from remaining set
-            for j_idx in covered_j_indices:
+            # Remove fully covered j-subsets from remaining set
+            for j_idx in newly_covered:
                 remaining_j_indices.remove(j_idx)
-            
-            # If there's an ls condition, perform additional processing
-            if y != 'all' and int(y) > 1 and removed_count > 0:
-                # Check LS condition for selected j_masks
-                fail_j_indices = self._check_ls_condition(
-                    covered_j_indices, 
-                    selected_k_masks, 
-                    j_masks, 
-                    self.s, 
-                    int(y), 
-                    n
-                )
-                
-                # Add failing j back to remaining set
-                remaining_j_indices.update(fail_j_indices)
-            
-            processed += removed_count
+                processed += 1
             
             # Update progress
             if self.progress_callback and total_j > 0:
@@ -272,18 +270,18 @@ class GreedyOptimizer:
         sample_to_idx = {sample: i for i, sample in enumerate(sorted(self.samples))}
         idx_to_sample = {i: sample for sample, i in sample_to_idx.items()}
         
-        # Determine coverage frequency parameter
-        y = 'all' if self.f > 1 else 1
+        # Use the actual coverage frequency parameter
+        coverage_frequency = self.f
         
         if self.progress_callback:
-            self.progress_callback(10, f"Using parameters n={n}, k={self.k}, j={self.j}, s={self.s}, y={y}")
+            self.progress_callback(10, f"Using parameters n={n}, k={self.k}, j={self.j}, s={self.s}, f={coverage_frequency}")
         
         try:
             # Get solution using bitmask algorithm
             if self.progress_callback:
                 self.progress_callback(20, "Using bitmask greedy algorithm to find optimal solution...")
             
-            solution = self._greedy_search_bitmask(n, y)
+            solution = self._greedy_search_bitmask(n, coverage_frequency)
             
             if solution:
                 if self.progress_callback:
@@ -344,7 +342,7 @@ class GreedyOptimizer:
         
         return solution
         
-    def evaluate_solution_quality(self, solution, n, y):
+    def evaluate_solution_quality(self, solution, n, coverage_frequency):
         """Evaluate solution quality
         Lower return value indicates higher quality
         """
@@ -354,42 +352,28 @@ class GreedyOptimizer:
         # Base quality = number of combinations
         quality = len(solution)
         
-        # Redundancy evaluation
-        if y == 'all':
-            # Calculate coverage frequency distribution for subsets of size s
-            all_subs = list(combinations(range(n), self.s))
-            coverage_counts = [0] * len(all_subs)
-            
-            for sol in solution:
-                sol_tuple = tuple(sorted(sol))
-                sol_cov = cov(sol_tuple, self.s)
-                for i, sub in enumerate(all_subs):
-                    if sub in sol_cov:
-                        coverage_counts[i] += 1
-            
-            # Calculate coverage uniformity, smaller standard deviation is better
-            if coverage_counts:
-                mean_coverage = sum(coverage_counts) / len(coverage_counts)
-                std_dev = (sum((c - mean_coverage) ** 2 for c in coverage_counts) / len(coverage_counts)) ** 0.5
-                
-                # Add uniformity penalty
-                quality += std_dev * 0.1
-        else:
-            # Calculate coverage frequency distribution for subsets of size j
-            j_subsets = list(combinations(range(n), self.j))
-            coverage_counts = []
-            
-            for j_subset in j_subsets:
-                j_set = set(j_subset)
-                cover_count = sum(1 for sol in solution if len(j_set & sol) >= self.s)
-                if cover_count >= y:  # Only consider those meeting requirements
-                    coverage_counts.append(cover_count - y)  # Excess coverage count
-            
-            # Calculate degree of over-coverage
-            if coverage_counts:
-                excess_coverage = sum(coverage_counts) / len(coverage_counts)
-                
-                # Add over-coverage penalty
-                quality += excess_coverage * 0.1
+        # Calculate coverage frequency distribution for subsets of size j
+        j_subsets = list(combinations(range(n), self.j))
+        coverage_counts = []
         
-        return quality 
+        for j_subset in j_subsets:
+            j_set = set(j_subset)
+            cover_count = sum(1 for sol in solution if len(j_set & sol) >= self.s)
+            coverage_counts.append(cover_count)
+        
+        # Evaluate quality based on how many j-subsets are covered at least f times
+        properly_covered = sum(1 for count in coverage_counts if count >= coverage_frequency)
+        coverage_ratio = properly_covered / len(j_subsets) if j_subsets else 0
+        
+        # Add coverage ratio penalty (lower ratio = higher penalty)
+        coverage_penalty = (1 - coverage_ratio) * 100
+        
+        # Calculate over-coverage (excess beyond required frequency)
+        excess_coverage = sum(max(0, count - coverage_frequency) for count in coverage_counts)
+        if j_subsets:
+            avg_excess = excess_coverage / len(j_subsets)
+            # Add over-coverage penalty
+            quality += avg_excess * 0.1
+        
+        # Total quality score combines combination count, coverage ratio, and over-coverage
+        return quality + coverage_penalty 
