@@ -12,9 +12,11 @@ import sqlite3
 import random
 import time
 from genetic_algorithm import GeneticOptimizer
+from gpu_optimizer import GPUOptimizerFactory
 from simulated_annealing import SimulatedAnnealingOptimizer
 from greedy_optimizer import GreedyOptimizer
 from solution_validator import SolutionValidator
+from gpu_accelerator import GPUAcceleratedOptimizerFactory
 
 # 添加用于生成PDF的库
 try:
@@ -67,7 +69,6 @@ class ComputationThread(QThread):
                 optimizer = SimulatedAnnealingOptimizer(self.samples, self.j, self.s, self.k, self.f)
             else:  # greedy_algorithm
                 optimizer = GreedyOptimizer(self.samples, self.j, self.s, self.k, self.f)
-
             # Setup progress callback for the optimizer
             optimizer.set_progress_callback(self.update_progress)
 

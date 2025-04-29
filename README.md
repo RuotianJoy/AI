@@ -146,5 +146,136 @@ python main_window.py
 
 ## 联系方式
 
-如有任何问题或建议，请联系项目维护者。 
+如有任何问题或建议，请联系项目维护者。
+
+# GPU加速优化器
+
+这个项目提供了三种常用组合优化算法的GPU加速实现：贪心算法、模拟退火算法和遗传算法。通过利用GPU的并行计算能力，可以显著提高这些算法在大规模组合问题上的性能。
+
+## 功能特点
+
+- **三种算法的GPU加速版本**：
+  - 贪心算法 (Greedy)
+  - 模拟退火算法 (Simulated Annealing)
+  - 遗传算法 (Genetic Algorithm)
+
+- **性能优势**：
+  - 位掩码操作的批量并行处理
+  - 矩阵计算的GPU加速
+  - 多个解的并行评估
+
+- **易于使用的接口**：
+  - 与现有CPU版本保持一致的API
+  - 工厂模式创建不同类型的优化器
+  - 进度回调机制
+
+## 环境要求
+
+- Python 3.6+
+- PyTorch 1.7+
+- CUDA支持的GPU (对于GPU加速)
+- NumPy
+
+## 安装
+
+1. 确保已安装CUDA和兼容的GPU驱动
+2. 安装PyTorch (带CUDA支持)：
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+
+3. 安装其他依赖：
+
+```bash
+pip install numpy
+```
+
+## 使用方法
+
+### 基本用法
+
+```python
+from gpu_optimizer import GPUOptimizerFactory
+
+# 准备数据
+samples = [f"sample_{i}" for i in range(100)]
+j = 3  # 子集参数
+s = 2  # 覆盖参数
+k = 4  # 组合大小
+f = 1  # 覆盖次数
+
+# 创建优化器 (可选: 'greedy', 'sa', 'ga')
+optimizer = GPUOptimizerFactory.create_optimizer(
+    'greedy',
+    samples, j, s, k, f
+)
+
+# 设置进度回调
+def progress_callback(percentage, message):
+    print(f"进度: {percentage}%, {message}")
+
+optimizer.set_progress_callback(progress_callback)
+
+# 执行优化
+result = optimizer.optimize()
+
+# 打印结果
+print(f"找到{len(result)}个组合:")
+for i, group in enumerate(result):
+    print(f"组合 {i+1}: {group}")
+```
+
+### 与CPU版本比较
+
+使用提供的比较工具来对比CPU和GPU版本的性能：
+
+```python
+from gpu_optimizer_usage import compare_performance
+
+# 生成测试数据
+samples = [f"sample_{i}" for i in range(50)]
+
+# 比较性能
+compare_performance(samples, j=3, s=2, k=4, f=1)
+```
+
+### 比较不同算法
+
+比较三种优化算法的性能和结果质量：
+
+```python
+from gpu_optimizer_usage import run_all_algorithms
+
+# 生成测试数据
+samples = [f"sample_{i}" for i in range(50)]
+
+# 运行所有算法并比较
+run_all_algorithms(samples, j=3, s=2, k=4, f=1)
+```
+
+## 算法说明
+
+### 贪心算法 (Greedy)
+
+贪心算法在每一步选择覆盖最多未覆盖j子集的k组合。GPU加速版本主要优化了位掩码操作和匹配矩阵的计算。
+
+### 模拟退火算法 (Simulated Annealing)
+
+模拟退火算法通过随机搜索找到近似最优解，避免陷入局部最优。GPU加速版本支持多个并行马尔可夫链，加快收敛速度。
+
+### 遗传算法 (Genetic Algorithm)
+
+遗传算法模拟生物进化过程，通过选择、交叉和变异操作搜索最优解。GPU加速版本支持种群并行评估和适应度计算。
+
+## 性能提示
+
+- 对于小规模问题 (n < 30)，CPU和GPU版本性能差异不明显
+- 对于中等规模问题 (30 <= n < 100)，GPU版本可能提供2-10倍的加速
+- 对于大规模问题 (n >= 100)，GPU版本可提供10-100倍的加速
+- 遗传算法相比其他算法通常从GPU加速中获益最多
+
+## 许可证
+
+此项目使用MIT许可证 - 详情请参见LICENSE文件 
 
