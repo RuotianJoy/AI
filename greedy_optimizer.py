@@ -451,6 +451,190 @@ class GreedyOptimizer:
         
         return solution
         
+    def _remove_similar_combinations(self, solution, n):
+        """
+        多线程检查并移除高度相似的组合
+        根据j值决定处理策略:
+        - 当j/2小于等于2时，使用两两组合比较，随机删除其中一个
+        - 当j/2大于2时，使用三元组比较，只保留一个，删除其他两个
+        高度相似指的是有k-1个元素相同的组合对
+        """
+        if not solution or len(solution) <= 1:
+            return solution
+            
+        if self.progress_callback:
+            self.progress_callback(95, f"开始检查高度相似组合...")
+            
+        # 复制解决方案，避免修改原始数据
+        solution = solution.copy()
+        
+        # 创建要移除的组合集合
+        to_remove = set()
+        
+        # 根据j/2的值确定处理策略
+        j_half_value = self.j // 2  # 整数除法，自动向下取整
+        
+        # 根据j_half_value决定采用两两比较还是三元组比较
+        if j_half_value <= 2:  # 小于等于2时采用两两比较
+            if self.progress_callback:
+                self.progress_callback(95, f"基于j={self.j}，采用两两组合比较策略...")
+                
+            # 创建所有组合对的索引
+            pairs = list(combinations(range(len(solution)), 2))
+            
+            # 随机打乱对的顺序，以确保随机性
+            random.shuffle(pairs)
+            
+            # 多线程处理函数
+            def process_batch(batch_pairs):
+                local_to_remove = set()
+                for i, j in batch_pairs:
+                    # 如果其中一个已经在移除列表中，跳过
+                    if i in local_to_remove or j in local_to_remove:
+                        continue
+                        
+                    # 计算两个组合的交集大小
+                    intersection_size = len(solution[i] & solution[j])
+                    
+                    # 如果交集大小恰好为k-1，表示有k-1个元素相同
+                    if intersection_size == self.k - 1:
+                        # 随机选择要移除的组合
+                        to_remove_idx = random.choice([i, j])
+                        local_to_remove.add(to_remove_idx)
+                return local_to_remove
+                
+            # 计算每个线程处理的组合数
+            num_workers = min(self.max_parallel_workers, 8)  # 最多使用8个线程
+            batch_size = max(1, len(pairs) // num_workers)
+            
+            # 创建批次
+            batches = [pairs[i:i + batch_size] for i in range(0, len(pairs), batch_size)]
+            
+            # 使用线程池处理批次
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+                # 启动所有任务
+                future_to_batch = {executor.submit(process_batch, batch): batch for batch in batches}
+                
+                # 收集结果
+                completed = 0
+                for future in concurrent.futures.as_completed(future_to_batch):
+                    batch = future_to_batch[future]
+                    try:
+                        batch_result = future.result()
+                        to_remove.update(batch_result)
+                        
+                        # 更新进度
+                        completed += 1
+                        if self.progress_callback:
+                            progress = 95 + int(3 * completed / len(batches))
+                            self.progress_callback(min(98, progress), 
+                                                 f"已检查 {completed}/{len(batches)} 批次，找到 {len(to_remove)} 个相似组合...")
+                    except Exception as e:
+                        print(f"处理批次时出错: {e}")
+        
+        else:  # j_half_value > 2，采用三元组比较
+            if len(solution) <= 2:  # 至少需要3个组合才能形成三元组
+                return solution
+                
+            if self.progress_callback:
+                self.progress_callback(95, f"基于j={self.j}，采用三元组比较策略...")
+                
+            # 创建所有三元组的索引
+            triplets = list(combinations(range(len(solution)), 3))
+            
+            # 随机打乱三元组的顺序，以确保随机性
+            random.shuffle(triplets)
+            
+            # 多线程处理函数
+            def process_batch(batch_triplets):
+                local_to_remove = set()
+                for i, j, k in batch_triplets:
+                    # 如果其中有已经在移除列表中的组合，跳过
+                    if i in local_to_remove or j in local_to_remove or k in local_to_remove:
+                        continue
+                    
+                    # 计算两两之间的交集大小
+                    intersection_size_ij = len(solution[i] & solution[j])
+                    intersection_size_ik = len(solution[i] & solution[k])
+                    intersection_size_jk = len(solution[j] & solution[k])
+                    
+                    # 计算高度相似对的数量（交集大小为k-1的对数）
+                    high_similarity_count = 0
+                    if intersection_size_ij == self.k - 1:
+                        high_similarity_count += 1
+                    if intersection_size_ik == self.k - 1:
+                        high_similarity_count += 1
+                    if intersection_size_jk == self.k - 1:
+                        high_similarity_count += 1
+                    
+                    # 如果三元组中有至少2对高度相似的组合，则保留一个，删除其他两个
+                    if high_similarity_count >= 2:
+                        # 随机选择要保留的组合索引
+                        to_keep = random.choice([i, j, k])
+                        # 将其他两个组合添加到移除列表
+                        to_remove_indices = [idx for idx in [i, j, k] if idx != to_keep]
+                        local_to_remove.update(to_remove_indices)
+                return local_to_remove
+                
+            # 计算每个线程处理的组合数
+            num_workers = min(self.max_parallel_workers, 8)  # 最多使用8个线程
+            batch_size = max(1, len(triplets) // num_workers)
+            
+            # 创建批次
+            batches = [triplets[i:i + batch_size] for i in range(0, len(triplets), batch_size)]
+            
+            # 使用线程池处理批次
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+                # 启动所有任务
+                future_to_batch = {executor.submit(process_batch, batch): batch for batch in batches}
+                
+                # 收集结果
+                completed = 0
+                for future in concurrent.futures.as_completed(future_to_batch):
+                    batch = future_to_batch[future]
+                    try:
+                        batch_result = future.result()
+                        to_remove.update(batch_result)
+                        
+                        # 更新进度
+                        completed += 1
+                        if self.progress_callback:
+                            progress = 95 + int(3 * completed / len(batches))
+                            self.progress_callback(min(98, progress), 
+                                                 f"已检查 {completed}/{len(batches)} 批次，找到 {len(to_remove)} 个相似组合...")
+                    except Exception as e:
+                        print(f"处理批次时出错: {e}")
+        
+        # 从解决方案中移除标记的组合（从大到小的索引，避免索引改变）
+        to_remove_list = sorted(to_remove, reverse=True)
+        
+        # 判断要删除的组合数是否大于保留的组合数
+        if len(to_remove_list) > len(solution) - len(to_remove_list):
+            if self.progress_callback:
+                self.progress_callback(98, f"要删除的组合数({len(to_remove_list)})大于保留的组合数({len(solution) - len(to_remove_list)})，反转删除逻辑...")
+            
+            # 反转逻辑：保留原本要删除的组合，删除原本要保留的组合
+            to_keep_indices = list(to_remove)
+            new_solution = []
+            for idx in to_keep_indices:
+                if idx < len(solution):  # 确保索引有效
+                    new_solution.append(solution[idx])
+            
+            if self.progress_callback:
+                self.progress_callback(99, f"完成相似组合检查，通过反转逻辑保留了 {len(new_solution)} 个组合")
+            
+            return new_solution
+        else:
+            # 原有逻辑：删除标记的组合
+            for idx in to_remove_list:
+                if idx < len(solution):  # 确保索引仍然有效
+                    del solution[idx]
+                
+            if self.progress_callback:
+                self.progress_callback(99, f"完成相似组合检查，共移除 {len(to_remove_list)} 个相似组合")
+            
+            return solution
+        
     def optimize(self):
         """
         Execute greedy algorithm optimization
@@ -488,6 +672,8 @@ class GreedyOptimizer:
                 
                 # 移除冗余组合
                 solution = self._remove_redundant_combinations(solution, n, coverage_frequency)
+                if n >= 13 and len(solution) >= 100:
+                    solution = self._remove_similar_combinations(solution, n)
                 
                 # 再次验证优化后的解决方案
                 final_valid, final_coverage, final_stats = self._verify_solution(solution, n, coverage_frequency)
@@ -518,6 +704,9 @@ class GreedyOptimizer:
                     
                     if coverage_ratio > 0.5:  # 如果覆盖率超过50%，尝试优化
                         approx_solution = self._remove_redundant_combinations(approx_solution, n, coverage_frequency)
+                        
+                        # 对近似解决方案也进行相似组合检查
+                        approx_solution = self._remove_similar_combinations(approx_solution, n)
                     
                     # Convert result to sample ID format
                     result = []
