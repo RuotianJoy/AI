@@ -629,6 +629,77 @@ class GreedyOptimizer:
             
             return solution
         
+    def _balance_element_frequency(self, solution, n):
+
+        if not solution or len(solution) <= 1:
+            return solution
+            
+        if self.progress_callback:
+            self.progress_callback(95, f"开始平衡元素频率分布...")
+        
+        # 复制解决方案，避免修改原始数据
+        solution = solution.copy()
+        
+        # 统计每个元素在所有组合中出现的次数
+        element_frequency = [0] * n
+        for combination in solution:
+            for element in combination:
+                element_frequency[element] += 1
+        
+        # 计算元素频率的极差(最大值-最小值)和平均值
+        max_freq = max(element_frequency)
+        min_freq = min(element_frequency)
+        avg_freq = sum(element_frequency) / n
+        freq_range = max_freq - min_freq + n
+        print(max_freq, min_freq, avg_freq, freq_range)
+        if self.progress_callback:
+            self.progress_callback(96, f"元素频率统计: 最大={max_freq}, 最小={min_freq}, 平均={avg_freq:.2f}, 极差={freq_range}")
+
+        # 识别高频元素和低频元素
+        high_freq_elements = [i for i, freq in enumerate(element_frequency) if freq > avg_freq * 1.2]
+        low_freq_elements = [i for i, freq in enumerate(element_frequency) if freq < avg_freq * 0.8]
+        
+        # 为每个组合计算"不平衡分数"
+        # 分数越高，表示组合包含越多高频元素和越少低频元素
+        imbalance_scores = []
+        for combination in solution:
+            high_freq_count = sum(1 for elem in combination if elem in high_freq_elements)
+            low_freq_count = sum(1 for elem in combination if elem in low_freq_elements)
+            # 分数 = 高频元素数 - 低频元素数
+            score = high_freq_count - low_freq_count
+            imbalance_scores.append(score)
+        
+        # 按不平衡分数从高到低排序组合索引
+        sorted_indices = sorted(range(len(solution)), key=lambda i: -imbalance_scores[i])
+        removal_count = freq_range
+        
+        if self.progress_callback:
+            self.progress_callback(97, f"将删除 {removal_count} 个不平衡组合，以减少元素频率极差")
+        
+        # 获取要删除的索引列表
+        to_remove = sorted_indices[:removal_count]
+        to_remove.sort(reverse=True)  # 从大到小排序，避免删除时索引变化
+        
+        # 删除选定的组合
+        for idx in to_remove:
+            if idx < len(solution):  # 确保索引有效
+                # 更新元素频率统计
+                for element in solution[idx]:
+                    element_frequency[element] -= 1
+                # 删除组合
+                del solution[idx]
+        
+        # 重新计算频率极差
+        max_freq = max(element_frequency)
+        min_freq = min(element_frequency)
+        avg_freq = sum(element_frequency) / n
+        new_freq_range = max_freq - min_freq
+        
+        if self.progress_callback:
+            self.progress_callback(99, f"元素频率平衡完成: 删除了 {removal_count} 个组合，新极差={new_freq_range}（原极差={freq_range}）")
+        
+        return solution
+
     def optimize(self):
         """
         Execute greedy algorithm optimization
@@ -666,8 +737,22 @@ class GreedyOptimizer:
                 
                 # 移除冗余组合
                 solution = self._remove_redundant_combinations(solution, n, coverage_frequency)
-                if n >= 13 and len(solution) >= 100:
+                
+                # 根据样本数量n选择不同的优化策略
+                if n >= 13 and n < 18 and len(solution) >= 100:
+                    # 对于中等规模问题，使用相似组合检查
+                    if self.progress_callback:
+                        self.progress_callback(94, f"使用相似组合检查策略（13 <= n < 18）...")
                     solution = self._remove_similar_combinations(solution, n)
+                
+                elif n >= 18 and len(solution) >= 100:
+                    # 对于大规模问题，先使用相似组合检查，再平衡元素频率
+                    if self.progress_callback:
+                        self.progress_callback(94, f"使用两阶段优化策略（n >= 18）...")
+                    # 第一阶段：相似组合检查
+                    solution = self._remove_similar_combinations(solution, n)
+                    # 第二阶段：平衡元素频率
+                    solution = self._balance_element_frequency(solution, n)
                 
                 # 再次验证优化后的解决方案
                 final_valid, final_coverage, final_stats = self._verify_solution(solution, n, coverage_frequency)
