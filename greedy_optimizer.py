@@ -254,6 +254,202 @@ class GreedyOptimizer:
                 fail_j_indices.append(j_idx)
 
         return fail_j_indices
+    
+    def _verify_solution(self, solution, n, coverage_frequency):
+        """
+        验证解决方案是否满足覆盖要求
+        返回：验证通过标志，覆盖率，详细统计数据
+        """
+        if not solution:
+            return False, 0, {}
+        
+        # 生成所有j子集
+        j_subsets = list(combinations(range(n), self.j))
+        coverage_counts = {}
+        
+        # 统计每个j子集被覆盖的次数
+        for i, j_subset in enumerate(j_subsets):
+            j_set = set(j_subset)
+            cover_count = sum(1 for sol in solution if len(j_set & sol) >= self.s)
+            coverage_counts[i] = cover_count
+        
+        # 计算覆盖率
+        properly_covered = sum(1 for count in coverage_counts.values() if count >= coverage_frequency)
+        total_subsets = len(j_subsets)
+        coverage_ratio = properly_covered / total_subsets if total_subsets else 0
+        
+        # 统计覆盖分布
+        coverage_distribution = defaultdict(int)
+        for count in coverage_counts.values():
+            coverage_distribution[count] += 1
+        
+        # 计算平均覆盖次数
+        avg_coverage = sum(coverage_counts.values()) / total_subsets if total_subsets else 0
+        
+        # 检查是否所有子集都被覆盖f次
+        all_covered = all(count >= coverage_frequency for count in coverage_counts.values())
+        
+        stats = {
+            "total_j_subsets": total_subsets,
+            "properly_covered": properly_covered,
+            "coverage_ratio": coverage_ratio,
+            "average_coverage": avg_coverage,
+            "coverage_distribution": dict(coverage_distribution),
+            "under_covered": total_subsets - properly_covered,
+            "solution_size": len(solution)
+        }
+        
+        return all_covered, coverage_ratio, stats
+    
+    def _remove_redundant_combinations(self, solution, n, coverage_frequency):
+        """
+        移除冗余组合，保持覆盖要求不变
+        采用保守策略，避免删除过多组合
+        """
+        if not solution or len(solution) <= 1:
+            return solution
+        
+        if self.progress_callback:
+            self.progress_callback(92, f"优化解决方案，移除冗余组合...")
+        
+        # 复制解决方案，避免修改原始数据
+        solution = solution.copy()
+        optimized = False
+        
+        # 计算每个j子集的覆盖信息
+        j_subsets = list(combinations(range(n), self.j))
+        
+        # 建立每个k组合对j子集的覆盖映射
+        coverage_map = []
+        for sol in solution:
+            covered_j = []
+            for i, j_subset in enumerate(j_subsets):
+                j_set = set(j_subset)
+                if len(j_set & sol) >= self.s:
+                    covered_j.append(i)
+            coverage_map.append(covered_j)
+        
+        # 计算当前j子集的覆盖次数
+        j_coverage_counts = [0] * len(j_subsets)
+        for covered_j in coverage_map:
+            for j_idx in covered_j:
+                j_coverage_counts[j_idx] += 1
+        
+        # 识别关键组合 - 对某些j子集的覆盖是不可或缺的
+        critical_combinations = set()
+        
+        # 找出覆盖次数恰好等于所需频率f的j子集
+        critical_j_indices = [i for i, count in enumerate(j_coverage_counts) 
+                             if count == coverage_frequency]
+        
+        # 对于这些临界j子集，将覆盖它们的所有组合标记为关键组合
+        for j_idx in critical_j_indices:
+            for k_idx, covered_j in enumerate(coverage_map):
+                if j_idx in covered_j:
+                    critical_combinations.add(k_idx)
+        
+        # 找出覆盖次数为f+1的j子集，这些也需要额外保护
+        near_critical_j_indices = [i for i, count in enumerate(j_coverage_counts) 
+                                  if count == coverage_frequency + 1]
+        
+        # 计算每个组合的"冗余分数"
+        # 分数越高表示组合越冗余，越可能被删除
+        redundancy_scores = []
+        for k_idx, covered_j in enumerate(coverage_map):
+            if k_idx in critical_combinations:
+                # 关键组合有最低分数，不应被删除
+                redundancy_scores.append(-1000)
+                continue
+                
+            # 计算该组合覆盖的j子集的平均覆盖次数
+            avg_coverage = 0
+            critical_coverage = 0
+            near_critical_coverage = 0
+            
+            if covered_j:
+                avg_coverage = sum(j_coverage_counts[j] for j in covered_j) / len(covered_j)
+                # 计算覆盖的临界j子集数量
+                critical_coverage = sum(1 for j in covered_j if j in critical_j_indices)
+                # 计算覆盖的接近临界j子集数量
+                near_critical_coverage = sum(1 for j in covered_j if j in near_critical_j_indices)
+            
+            # 分数计算:
+            # 1. 覆盖的j子集越多，分数越低(越不冗余)
+            # 2. 覆盖的j子集平均覆盖次数越高，分数越高(越冗余)
+            # 3. 覆盖临界和接近临界的j子集，大幅降低分数(保护这些组合)
+            score = avg_coverage - len(covered_j) * 0.5 - critical_coverage * 10 - near_critical_coverage * 5
+            redundancy_scores.append(score)
+        
+        # 按冗余分数排序索引(从高到低)
+        sorted_indices = sorted(range(len(solution)), 
+                               key=lambda i: -redundancy_scores[i])
+        
+        # 设置最大允许删除的组合数量(保守策略)
+        max_removal = min(len(solution) // 5, 10)  # 最多删除20%或10个组合
+        
+        # 尝试移除组合，如果移除后仍然满足覆盖要求，则永久移除
+        removed_count = 0
+        for idx in sorted_indices:
+            # 如果达到最大删除数量，停止删除
+            if removed_count >= max_removal:
+                break
+                
+            # 调整索引考虑已删除的组合
+            adjusted_idx = idx
+            for prev_idx in sorted_indices[:sorted_indices.index(idx)]:
+                if prev_idx < idx and redundancy_scores[prev_idx] > 0:  # 之前已删除的组合
+                    adjusted_idx -= 1
+            
+            if adjusted_idx >= len(solution) or adjusted_idx < 0:
+                continue
+                
+            # 如果是关键组合，跳过
+            if redundancy_scores[idx] < 0:
+                continue
+                
+            # 检查移除此组合后是否仍满足覆盖要求
+            can_remove = True
+            # 创建临时覆盖计数副本
+            temp_coverage_counts = j_coverage_counts.copy()
+            
+            # 更新临时覆盖计数
+            for j_idx in coverage_map[adjusted_idx]:
+                temp_coverage_counts[j_idx] -= 1
+                if temp_coverage_counts[j_idx] < coverage_frequency:
+                    can_remove = False
+                    break
+            
+            # 增加额外保守条件：不要过度减少覆盖
+            if can_remove:
+                # 计算移除前后的平均冗余覆盖率
+                before_avg = sum(max(0, count - coverage_frequency) for count in j_coverage_counts) / len(j_subsets)
+                after_avg = sum(max(0, count - coverage_frequency) for count in temp_coverage_counts) / len(j_subsets)
+                
+                # 如果移除会导致平均冗余降低过多，则不删除
+                if before_avg > 0 and (before_avg - after_avg) / before_avg > 0.3:  # 超过30%的冗余减少
+                    can_remove = False
+            
+            if can_remove:
+                # 更新实际覆盖计数
+                for j_idx in coverage_map[adjusted_idx]:
+                    j_coverage_counts[j_idx] -= 1
+                
+                # 移除组合及其覆盖映射
+                del solution[adjusted_idx]
+                del coverage_map[adjusted_idx]
+                removed_count += 1
+                optimized = True
+                
+                if self.progress_callback and removed_count % 2 == 0:
+                    self.progress_callback(92 + min(7, removed_count//2), 
+                                         f"已移除 {removed_count} 个冗余组合...")
+        
+        if self.progress_callback and optimized:
+            self.progress_callback(99, f"优化完成，共移除 {removed_count} 个冗余组合")
+        elif self.progress_callback:
+            self.progress_callback(99, "无冗余组合可移除")
+        
+        return solution
         
     def optimize(self):
         """
@@ -284,8 +480,23 @@ class GreedyOptimizer:
             solution = self._greedy_search_bitmask(n, coverage_frequency)
             
             if solution:
+                # 验证解决方案
                 if self.progress_callback:
-                    self.progress_callback(90, f"Bitmask greedy algorithm found solution, combination count: {len(solution)}")
+                    self.progress_callback(91, f"验证算法解决方案...")
+                
+                is_valid, coverage_ratio, stats = self._verify_solution(solution, n, coverage_frequency)
+                
+                # 移除冗余组合
+                solution = self._remove_redundant_combinations(solution, n, coverage_frequency)
+                
+                # 再次验证优化后的解决方案
+                final_valid, final_coverage, final_stats = self._verify_solution(solution, n, coverage_frequency)
+                
+                if self.progress_callback:
+                    if final_valid:
+                        self.progress_callback(100, f"解决方案验证通过！组合数量: {len(solution)}，j子集覆盖率: {final_coverage*100:.2f}%")
+                    else:
+                        self.progress_callback(100, f"警告：解决方案验证未通过，j子集覆盖率: {final_coverage*100:.2f}%")
                 
                 # Convert result to sample ID format
                 result = []
@@ -293,9 +504,6 @@ class GreedyOptimizer:
                     group = [idx_to_sample[i] for i in sol]
                     result.append(sorted(group))
                     
-                if self.progress_callback:
-                    self.progress_callback(100, f"Greedy algorithm optimization completed, found {len(result)} combinations")
-                
                 return result
             else:
                 if self.progress_callback:
@@ -305,6 +513,12 @@ class GreedyOptimizer:
                 approx_solution = self._construct_approximate_solution(n, n//2)
                 
                 if approx_solution:
+                    # 验证和优化近似解决方案
+                    is_valid, coverage_ratio, stats = self._verify_solution(approx_solution, n, coverage_frequency)
+                    
+                    if coverage_ratio > 0.5:  # 如果覆盖率超过50%，尝试优化
+                        approx_solution = self._remove_redundant_combinations(approx_solution, n, coverage_frequency)
+                    
                     # Convert result to sample ID format
                     result = []
                     for sol in approx_solution:
@@ -312,7 +526,7 @@ class GreedyOptimizer:
                         result.append(sorted(group))
                         
                     if self.progress_callback:
-                        self.progress_callback(100, f"Constructed approximate solution with {len(result)} combinations")
+                        self.progress_callback(100, f"构建近似解决方案，组合数量: {len(result)}，覆盖率: {coverage_ratio*100:.2f}%")
                     
                     return result
                 else:
