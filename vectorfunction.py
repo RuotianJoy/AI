@@ -14,8 +14,7 @@ from scipy.sparse import csr_matrix
         4.释放s_group然后生成下一个s_group
         5.遍历完全部j_group后解放select_j_group
         6.重复1-5
-    重复步骤直到j_group归0
-    ps:速度优化可以使用位掩码的方法来加速运算'''
+    重复步骤直到j_group归0'''
 
 """需要的函数有：  生成矩阵的函数 generate_matrix()
                 转置矩阵 matrix.T

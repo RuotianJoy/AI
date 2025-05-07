@@ -105,7 +105,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("An Optimal Samples Selection System")
-        self.setMinimumSize(1000, 1200)
+        self.setMinimumSize(1400, 800)
         self.settings = QSettings("OptimalSamples", "SampleSelection")
 
         # Set application style
