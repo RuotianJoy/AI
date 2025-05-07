@@ -452,18 +452,12 @@ class GreedyOptimizer:
         return solution
         
     def _remove_similar_combinations(self, solution, n):
-        """
-        多线程检查并移除高度相似的组合
-        根据j值决定处理策略:
-        - 当j/2小于等于2时，使用两两组合比较，随机删除其中一个
-        - 当j/2大于2时，使用三元组比较，只保留一个，删除其他两个
-        高度相似指的是有k-1个元素相同的组合对
-        """
+
         if not solution or len(solution) <= 1:
             return solution
             
         if self.progress_callback:
-            self.progress_callback(95, f"开始检查高度相似组合...")
+            self.progress_callback(95, f"start...")
             
         # 复制解决方案，避免修改原始数据
         solution = solution.copy()
@@ -477,7 +471,7 @@ class GreedyOptimizer:
         # 根据j_half_value决定采用两两比较还是三元组比较
         if j_half_value <= 2:  # 小于等于2时采用两两比较
             if self.progress_callback:
-                self.progress_callback(95, f"基于j={self.j}，采用两两组合比较策略...")
+                self.progress_callback(95, f"j={self.j}")
                 
             # 创建所有组合对的索引
             pairs = list(combinations(range(len(solution)), 2))
@@ -537,7 +531,7 @@ class GreedyOptimizer:
                 return solution
                 
             if self.progress_callback:
-                self.progress_callback(95, f"基于j={self.j}，采用三元组比较策略...")
+                self.progress_callback(95, f"j={self.j}")
                 
             # 创建所有三元组的索引
             triplets = list(combinations(range(len(solution)), 3))
