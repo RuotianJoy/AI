@@ -739,7 +739,7 @@ class GreedyOptimizer:
                 solution = self._remove_redundant_combinations(solution, n, coverage_frequency)
                 
                 # 根据样本数量n选择不同的优化策略
-                if n >= 13 and n < 18 and len(solution) >= 100:
+                if n >= 12 and n < 18 and len(solution) >= 100:
                     # 对于中等规模问题，使用相似组合检查
                     if self.progress_callback:
                         self.progress_callback(94, f"使用相似组合检查策略（13 <= n < 18）...")
